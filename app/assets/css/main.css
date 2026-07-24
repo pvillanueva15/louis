@@ -1275,9 +1275,27 @@ body {
   overflow-y: visible;
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  /* Free continuous pan — snap + html scroll-behavior:smooth made wheel feel chunky/delayed */
+  scroll-snap-type: none;
+  scroll-behavior: auto;
+  scroll-padding-inline: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-maru-black) transparent;
+  cursor: grab;
+  outline: none;
+}
+
+.myo-card-fan:focus-visible {
+  box-shadow: inset 0 0 0 3px var(--color-maru-black);
+}
+
+.myo-card-fan--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.myo-card-fan--dragging .myo-playing-card {
+  pointer-events: none;
 }
 
 .myo-card-fan > .myo-playing-card-slot:not(:first-child) {
@@ -1285,7 +1303,18 @@ body {
 }
 
 .myo-card-fan::-webkit-scrollbar {
-  display: none;
+  height: 8px;
+}
+
+.myo-card-fan::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.myo-card-fan::-webkit-scrollbar-thumb {
+  background: var(--color-maru-black);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .playlist-remove {

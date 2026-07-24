@@ -145,7 +145,6 @@ const cardMotionStyle = computed(() => {
   height: 90%;
   min-height: 7.65rem;
   overflow: visible;
-  scroll-snap-align: start;
   transition: z-index 0ms;
 }
 

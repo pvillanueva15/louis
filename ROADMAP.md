@@ -34,7 +34,27 @@ Explore pre-canned deploy targets that consume container images (Railway templat
 
 ### Horizontal My Cards scrolling
 
-Investigate and fix horizontal scrolling issues in the My Cards panel (overflow, scroll snap, touch/trackpad behavior, layout width).
+~~Investigate and fix horizontal scrolling in the My Cards carousel~~ — **done**: continuous wheel/drag pan (no snap), thin scrollbar, keyboard arrows; fan metaphor kept.
+
+### Smartphone-centric UI
+
+Phone layout for the three-panel editor. On small screens YouTube result titles are truncated to thumbnails with no way to read the full name; design a phone-first results list and overall flow (currently tuned for desktop and tablet).
+
+### YouTube chapters → tracks
+
+Optional per-result toggle to expand YouTube chapters into separate playlist tracks. Must compose cleanly with auto ~1-hour long-track splitting.
+
+### Desktop app wrapper (Electron or Tauri)
+
+Package Louis as a cross-OS executable so less technical users can run it without Docker/GitHub CLI — consumer-friendly install alongside the one-click hosting work.
+
+### Audio trim
+
+Cut intros/outros (and similar) before save. Non-trivial UX; trim points per track in the playlist editor.
+
+### Audio normalize
+
+Level volumes across tracks in a playlist so mixed YouTube sources play at a consistent loudness on the Yoto.
 
 ## Done / shipped
 

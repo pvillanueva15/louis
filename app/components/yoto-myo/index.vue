@@ -10,6 +10,7 @@
 import MaruHeading from '~/components/layout/MaruHeading.vue'
 import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
 import { useYotoMyo } from './useYotoMyo'
+import { useMyoCardFanScroll } from './useMyoCardFanScroll'
 import { YOTO_MYO_KEY } from './keys'
 import YotoMyoCard from './YotoMyoCard.vue'
 import type { YotoMyoCard as YotoMyoCardType } from './types'
@@ -34,7 +35,19 @@ const {
   connect,
 } = yoto
 
+const {
+  fanRef,
+  dragging,
+  shouldSuppressCardClick,
+  onKeydown,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+} = useMyoCardFanScroll()
+
 function onSelectCard(card: YotoMyoCardType) {
+  if (shouldSuppressCardClick()) return
   editor?.selectCard(card)
 }
 
@@ -103,7 +116,16 @@ watch(cardCountLabel, value => emit('update:count', value), { immediate: true })
 
         <ul
           v-else
+          ref="fanRef"
           class="myo-card-fan list-none m-0 p-0 flex-1 min-h-0"
+          :class="{ 'myo-card-fan--dragging': dragging }"
+          tabindex="0"
+          aria-label="My Yoto cards"
+          @keydown="onKeydown"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerCancel"
         >
           <YotoMyoCard
             v-for="card in cards"
@@ -177,7 +199,16 @@ watch(cardCountLabel, value => emit('update:count', value), { immediate: true })
 
         <ul
           v-else
+          ref="fanRef"
           class="myo-card-fan list-none m-0 p-0 flex-1 min-h-0"
+          :class="{ 'myo-card-fan--dragging': dragging }"
+          tabindex="0"
+          aria-label="My Yoto cards"
+          @keydown="onKeydown"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerCancel"
         >
           <YotoMyoCard
             v-for="card in cards"
