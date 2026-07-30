@@ -1,4 +1,9 @@
 import type { YotoAuthStatus, YotoContentMineResponse, YotoMyoCard, YotoMyoStatus } from './types'
+import { shouldPreserveAuxiliaryRefreshState } from '#shared/yoto/refreshPolicy'
+
+interface RefreshOptions {
+  auxiliary?: boolean
+}
 
 function extractErrorMessage(err: unknown): string {
   const fetchErr = err as {
@@ -22,7 +27,9 @@ export function useYotoMyo() {
   const connected = ref(false)
   const hasWriteScope = ref(false)
 
-  async function fetchCards() {
+  async function fetchCards(options: RefreshOptions = {}) {
+    const previousCards = cards.value
+    const wasConnected = connected.value
     status.value = 'loading'
     errorMessage.value = ''
 
@@ -34,6 +41,18 @@ export function useYotoMyo() {
     catch (err: unknown) {
       const fetchErr = err as { statusCode?: number }
       errorMessage.value = extractErrorMessage(err)
+
+      if (
+        shouldPreserveAuxiliaryRefreshState(
+          options.auxiliary === true,
+          wasConnected,
+          fetchErr.statusCode,
+        )
+      ) {
+        cards.value = previousCards
+        status.value = 'idle'
+        return
+      }
 
       if (fetchErr.statusCode === 401) {
         connected.value = false
@@ -47,7 +66,9 @@ export function useYotoMyo() {
     }
   }
 
-  async function checkStatus() {
+  async function checkStatus(options: RefreshOptions = {}) {
+    const previousCards = cards.value
+    const wasConnected = connected.value
     status.value = 'loading'
     errorMessage.value = ''
 
@@ -69,10 +90,24 @@ export function useYotoMyo() {
         return
       }
 
-      await fetchCards()
+      await fetchCards(options)
     }
     catch (err: unknown) {
+      const fetchErr = err as { statusCode?: number }
       errorMessage.value = extractErrorMessage(err)
+
+      if (
+        shouldPreserveAuxiliaryRefreshState(
+          options.auxiliary === true,
+          wasConnected,
+          fetchErr.statusCode,
+        )
+      ) {
+        cards.value = previousCards
+        status.value = 'idle'
+        return
+      }
+
       status.value = 'error'
     }
   }
@@ -100,6 +135,10 @@ export function useYotoMyo() {
     await checkStatus()
   }
 
+  async function refreshAfterCreate() {
+    await checkStatus({ auxiliary: true })
+  }
+
   onMounted(() => {
     checkStatus()
   })
@@ -114,6 +153,7 @@ export function useYotoMyo() {
     connect,
     disconnect,
     refresh,
+    refreshAfterCreate,
     fetchCards,
   }
 }

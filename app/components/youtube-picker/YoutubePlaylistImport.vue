@@ -40,7 +40,7 @@ const pageErrorMessage = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
 const canOpen = computed(
-  () => Boolean(editor?.selectedCardId.value) && !editor?.isPlaylistLocked.value,
+  () => Boolean(editor?.isEditing.value) && !editor?.isPlaylistLocked.value,
 )
 
 const evaluation = computed(() =>
@@ -257,7 +257,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
       type="button"
       class="maru-button maru-button--sm bg-maru-yellow text-maru-black"
       :disabled="!canOpen"
-      :title="canOpen ? 'Import tracks from a public YouTube playlist' : 'Select a MYO card first'"
+      :title="canOpen ? 'Import tracks from a public YouTube playlist' : 'Start a new playlist or select a MYO card first'"
       @click="show"
     >
       <span class="maru-button__label">Import playlist</span>

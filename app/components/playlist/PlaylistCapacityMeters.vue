@@ -9,11 +9,11 @@ import {
 
 const editor = inject(MYO_EDITOR_KEY, null)
 const playlist = editor?.playlist
-const selectedCardId = editor?.selectedCardId
+const isEditing = editor?.isEditing
 
 const capacity = computed(() => getPlaylistCapacitySnapshot(playlist?.value ?? []))
 
-const show = computed(() => Boolean(selectedCardId?.value))
+const show = computed(() => Boolean(isEditing?.value))
 
 const trackRatio = computed(() => {
   const { trackCount, trackMax } = capacity.value

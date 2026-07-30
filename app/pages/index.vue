@@ -28,6 +28,23 @@
           />
         </template>
 
+        <template #playlist-header>
+          <label
+            v-if="isNewPlaylist"
+            class="flex items-center"
+          >
+            <span class="sr-only">Playlist title</span>
+            <input
+              v-model="cardTitle"
+              type="text"
+              class="w-48 max-w-[30vw] rounded-maru border-2 border-maru-black bg-maru-white px-2 py-1 font-maru-mono text-sm text-maru-black"
+              placeholder="Playlist title"
+              autocomplete="off"
+              :disabled="isPlaylistLocked"
+            >
+          </label>
+        </template>
+
         <template #playlist-footer>
           <PlaylistPanelFooter />
         </template>
@@ -91,7 +108,11 @@ import AppSplash from '~/components/splash/AppSplash.vue'
 const yoto = useYotoMyo()
 provide(YOTO_MYO_KEY, yoto)
 
-const editor = useMyoEditor()
+const editor = useMyoEditor({
+  onPlaylistCreated: () => {
+    void yoto.refreshAfterCreate()
+  },
+})
 provide(MYO_EDITOR_KEY, editor)
 
 const route = useRoute()
@@ -100,7 +121,13 @@ const router = useRouter()
 const { playEvent } = useUiSound()
 const { shouldShowSplash, splashHoldsGate, splashDebug, markSplashSeen } = useAppSplash()
 
-const { playlist, isPlaylistLocked, selectedCardId, cardTitle } = editor
+const {
+  playlist,
+  isEditing,
+  isNewPlaylist,
+  isPlaylistLocked,
+  cardTitle,
+} = editor
 const { connected, status } = yoto
 
 const myoCountLabel = ref('')
@@ -145,7 +172,8 @@ watch(
 )
 
 const playlistTitle = computed(() => {
-  if (!selectedCardId.value || !cardTitle.value.trim()) return 'Playlist'
+  if (isNewPlaylist.value && !cardTitle.value.trim()) return 'New Playlist'
+  if (!isEditing.value || !cardTitle.value.trim()) return 'Playlist'
   return cardTitle.value.trim()
 })
 
@@ -227,7 +255,7 @@ function onDragEnd(event: DragEndEvent) {
   }
 
   if (sourceData?.type === 'result') {
-    if (!selectedCardId.value) {
+    if (!isEditing.value) {
       playEvent('disabled')
       return
     }
