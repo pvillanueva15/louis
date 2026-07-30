@@ -10,7 +10,10 @@ import {
   removePersistedSave,
 } from './saveJobPersistence'
 import type { SaveJobState, YotoCardDetail } from './types'
-import { getPlaylistPreflightLimitError } from '#shared/myo-editor/yotoMyoLimits'
+import {
+  getPlaylistPreflightLimitError,
+  getTrackCountLimitError,
+} from '#shared/myo-editor/yotoMyoLimits'
 
 export interface SaveProgress {
   phase: SaveJobState['status']
@@ -54,6 +57,7 @@ export interface MyoEditorContext {
   selectCard: (card: YotoMyoCard) => Promise<void>
   clearSelection: (force?: boolean) => boolean
   resetChanges: () => void
+  appendTracks: (tracks: PlaylistTrack[]) => { ok: true, added: number } | { ok: false, message: string }
   updateCard: (options?: { acknowledgeCapacityRisk?: boolean }) => Promise<void>
 }
 
@@ -500,6 +504,39 @@ export function useMyoEditor() {
     errorMessage.value = ''
   }
 
+  function appendTracks(
+    tracks: PlaylistTrack[],
+  ): { ok: true, added: number } | { ok: false, message: string } {
+    if (!selectedCardId.value) {
+      return { ok: false, message: 'Select a MYO card before importing a playlist.' }
+    }
+    if (loading.value || isPlaylistLocked.value) {
+      return { ok: false, message: 'Wait for the current card operation to finish.' }
+    }
+
+    const countError = getTrackCountLimitError(playlist.value.length + tracks.length)
+    if (countError) return { ok: false, message: countError }
+
+    const existingKeys = new Set(
+      playlist.value.map(track => track.youtubeId ? `youtube:${track.youtubeId}` : `track:${track.id}`),
+    )
+    const incomingKeys = new Set<string>()
+    for (const track of tracks) {
+      const key = track.youtubeId ? `youtube:${track.youtubeId}` : `track:${track.id}`
+      if (existingKeys.has(key) || incomingKeys.has(key)) {
+        return {
+          ok: false,
+          message: 'The playlist changed while you were reviewing it. Review duplicate tracks and try again.',
+        }
+      }
+      incomingKeys.add(key)
+    }
+
+    playlist.value = [...playlist.value, ...clonePlaylist(tracks)]
+    errorMessage.value = ''
+    return { ok: true, added: tracks.length }
+  }
+
   async function updateCard(options?: { acknowledgeCapacityRisk?: boolean }) {
     const cardId = selectedCardId.value
     if (!cardId || !isDirty.value || loading.value || isPlaylistLocked.value) return
@@ -557,6 +594,7 @@ export function useMyoEditor() {
     selectCard,
     clearSelection,
     resetChanges,
+    appendTracks,
     updateCard,
   }
 }
