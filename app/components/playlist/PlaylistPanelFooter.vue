@@ -6,6 +6,10 @@ import {
   getPlaylistCapacitySnapshot,
   YOTO_MYO_TRACK_COUNT_MESSAGE,
 } from '#shared/myo-editor/yotoMyoLimits'
+import {
+  getStandalonePlaylistValidationError,
+  UNCERTAIN_CREATE_START_MESSAGE,
+} from '#shared/myo-editor/standalonePlaylist'
 
 const editor = inject(MYO_EDITOR_KEY, null)
 const { playEvent } = useUiSound()
@@ -16,8 +20,11 @@ const isDirty = editor?.isDirty
 const loading = editor?.loading
 const isPlaylistLocked = editor?.isPlaylistLocked
 const selectedCardId = editor?.selectedCardId
+const isNewPlaylist = editor?.isNewPlaylist
+const cardTitle = editor?.cardTitle
 const isPodcast = editor?.isPodcast
 const errorMessage = editor?.errorMessage
+const createOutcomeUncertain = editor?.createOutcomeUncertain
 const playlist = editor?.playlist
 
 const showCapacityConfirm = ref(false)
@@ -36,23 +43,44 @@ const overTrackLimit = computed(
   () => capacity.value.trackCount > capacity.value.trackMax,
 )
 
+const createValidationError = computed(() =>
+  isNewPlaylist?.value
+    ? getStandalonePlaylistValidationError(cardTitle?.value ?? '', playlist?.value ?? [])
+    : null,
+)
+
 const footerHint = computed(() => {
   if (isPodcast?.value) return 'Podcast cards cannot be edited yet.'
+  if (createOutcomeUncertain?.value) {
+    return errorMessage?.value || UNCERTAIN_CREATE_START_MESSAGE
+  }
   if (errorMessage?.value) return errorMessage.value
+  if (createValidationError.value) return createValidationError.value
   if (overTrackLimit.value) return YOTO_MYO_TRACK_COUNT_MESSAGE
   return ''
 })
 
-const canUpdate = computed(
-  () => Boolean(
-    selectedCardId?.value
-    && isDirty?.value
-    && !loading?.value
+const canSave = computed(() => {
+  const ready = Boolean(
+    !loading?.value
     && !isPlaylistLocked?.value
     && !saveProgressTestMode.value
     && !isPodcast?.value,
-  ),
-)
+  )
+  if (!ready) return false
+  if (isNewPlaylist?.value) {
+    return !createValidationError.value && !createOutcomeUncertain?.value
+  }
+  return Boolean(selectedCardId?.value && isDirty?.value)
+})
+
+const actionLabel = computed(() => {
+  if (isPlaylistLocked?.value || saveProgressTestMode.value) {
+    return isNewPlaylist?.value ? 'Creating...' : 'Updating...'
+  }
+  if (isNewPlaylist?.value && createOutcomeUncertain?.value) return 'Check My Cards'
+  return isNewPlaylist?.value ? 'Create' : 'Update'
+})
 
 const canReset = computed(
   () => Boolean(isDirty?.value && !loading?.value && !isPlaylistLocked?.value && !saveProgressTestMode.value),
@@ -62,8 +90,16 @@ function closeCapacityConfirm() {
   showCapacityConfirm.value = false
 }
 
-function onUpdate() {
-  if (!canUpdate.value) {
+function savePlaylist(options?: { acknowledgeCapacityRisk?: boolean }) {
+  if (isNewPlaylist?.value) {
+    void editor?.createPlaylist(options)
+    return
+  }
+  void editor?.updateCard(options)
+}
+
+function onSave() {
+  if (!canSave.value) {
     playEvent('disabled')
     return
   }
@@ -75,20 +111,20 @@ function onUpdate() {
   }
 
   playEvent('buttonPrimary')
-  void editor?.updateCard()
+  savePlaylist()
 }
 
-function onConfirmRiskyUpdate() {
-  if (!canUpdate.value) {
+function onConfirmRiskySave() {
+  if (!canSave.value) {
     playEvent('disabled')
     return
   }
   playEvent('buttonPrimary')
   closeCapacityConfirm()
-  void editor?.updateCard({ acknowledgeCapacityRisk: true })
+  savePlaylist({ acknowledgeCapacityRisk: true })
 }
 
-function onCancelRiskyUpdate() {
+function onCancelRiskySave() {
   playEvent('resetPlaylist')
   closeCapacityConfirm()
 }
@@ -106,12 +142,12 @@ function onReset() {
 watch(
   () => [
     overCapacity.value,
-    canUpdate.value,
+    canSave.value,
     isPlaylistLocked?.value,
     saveProgressTestMode.value,
   ],
   () => {
-    if (!overCapacity.value || !canUpdate.value || isPlaylistLocked?.value || saveProgressTestMode.value) {
+    if (!overCapacity.value || !canSave.value || isPlaylistLocked?.value || saveProgressTestMode.value) {
       closeCapacityConfirm()
     }
   },
@@ -143,11 +179,11 @@ watch(
           <button
             type="button"
             class="panel-footer-btn panel-footer-btn--short panel-footer-btn--primary shrink-0"
-            :aria-disabled="!canUpdate"
-            :tabindex="canUpdate ? 0 : -1"
-            @click="onUpdate"
+            :aria-disabled="!canSave"
+            :tabindex="canSave ? 0 : -1"
+            @click="onSave"
           >
-            <span class="panel-footer-btn__label">{{ isPlaylistLocked?.value || saveProgressTestMode ? 'Updating...' : 'Update' }}</span>
+            <span class="panel-footer-btn__label">{{ actionLabel }}</span>
           </button>
         </div>
       </div>
@@ -166,22 +202,22 @@ watch(
         id="footer-capacity-confirm-title"
         class="footer-capacity-confirm__copy font-maru-mono text-pretty"
       >
-        Over MYO limit — update may fail.
+        Over MYO limit — {{ isNewPlaylist ? 'create' : 'update' }} may fail.
       </p>
       <div class="footer-capacity-confirm__actions">
         <button
           type="button"
           class="panel-footer-btn panel-footer-btn--short panel-footer-btn--secondary shrink-0"
-          @click="onCancelRiskyUpdate"
+          @click="onCancelRiskySave"
         >
           <span class="panel-footer-btn__label">Cancel</span>
         </button>
         <button
           type="button"
           class="panel-footer-btn panel-footer-btn--short panel-footer-btn--primary shrink-0"
-          @click="onConfirmRiskyUpdate"
+          @click="onConfirmRiskySave"
         >
-          <span class="panel-footer-btn__label">Update anyway</span>
+          <span class="panel-footer-btn__label">{{ isNewPlaylist ? 'Create' : 'Update' }} anyway</span>
         </button>
       </div>
     </div>

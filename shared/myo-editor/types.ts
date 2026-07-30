@@ -120,6 +120,8 @@ export interface SavePlan {
   errors: string[]
 }
 
+export type SaveOperation = 'create' | 'update'
+
 export type SaveJobPhase =
   | 'planning'
   | 'downloading'
@@ -146,7 +148,11 @@ export interface SaveJobTrackProgress {
 
 export interface SaveJobState {
   id: string
-  cardId: string
+  operation: SaveOperation
+  /** Existing card for updates; populated with Yoto's returned ID after a create. */
+  cardId?: string
+  /** A create may have reached Yoto even though Louis could not confirm the result. */
+  outcomeUncertain?: boolean
   status: SaveJobPhase
   /** Monotonic 0–100 progress for the entire save job. */
   progress: number

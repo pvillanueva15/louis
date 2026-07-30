@@ -29,7 +29,16 @@ if (!editor) {
 
 const yoto = inject(YOTO_MYO_KEY, null)
 
-const { playlist, isPlaylistLocked, saveProgress, loading, cardTitle, selectedCardId, clearSelection } = editor
+const {
+  playlist,
+  isEditing,
+  isPlaylistLocked,
+  saveProgress,
+  loading,
+  cardTitle,
+  selectedCardId,
+  clearSelection,
+} = editor
 
 const saveProgressTestMode = useSaveProgressTestMode()
 
@@ -261,7 +270,7 @@ const { isDropTarget } = useDroppable({
     () => isDropzoneLocked.value
       || isCardLoadingActive.value
       || isYotoPlaylistBlocked.value
-      || !selectedCardId.value,
+      || !isEditing.value,
   ),
 })
 
@@ -306,7 +315,7 @@ watch(() => props.scrollToVideoId, async (id) => {
     ref="element"
     class="playlist-dropzone relative flex flex-col flex-1 min-h-0 h-full w-full overflow-hidden transition-[background-color,box-shadow]"
     :class="[
-      isDropTarget && !isDropzoneLocked && !isCardLoadingActive && !isYotoPlaylistBlocked && selectedCardId
+      isDropTarget && !isDropzoneLocked && !isCardLoadingActive && !isYotoPlaylistBlocked && isEditing
         ? 'bg-maru-green-light ring-2 ring-inset ring-maru-blue'
         : '',
       isDropzoneLocked ? 'playlist-dropzone--locked' : '',
@@ -315,7 +324,7 @@ watch(() => props.scrollToVideoId, async (id) => {
   >
     <div
       class="playlist-dropzone__scroll flex flex-col flex-1 min-h-0 overflow-y-auto p-3 sm:p-4"
-      :class="isDropzoneLocked || isCardLoadingActive || isYotoPlaylistBlocked || !selectedCardId ? 'pointer-events-none select-none' : ''"
+      :class="isDropzoneLocked || isCardLoadingActive || isYotoPlaylistBlocked || !isEditing ? 'pointer-events-none select-none' : ''"
     >
       <TransitionGroup
         v-if="showPlaylistItems"

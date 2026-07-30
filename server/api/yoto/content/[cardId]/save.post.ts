@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
 
   const job = startSaveJob(
     event,
-    cardId,
+    { operation: 'update', cardId },
     body.playlist,
     body.cardTitle?.trim() || 'My Card',
     Array.isArray(body.baselinePlaylist) ? body.baselinePlaylist : [],
