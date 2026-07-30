@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { useYoutubePicker } from './useYoutubePicker'
 import YoutubePickerPreview from './YoutubePickerPreview.vue'
+import YoutubePlaylistImport from './YoutubePlaylistImport.vue'
 import YoutubePickerResultsPane from './YoutubePickerResultsPane.vue'
 import YoutubePickerSearch from './YoutubePickerSearch.vue'
 import {
@@ -153,6 +154,7 @@ onUnmounted(() => {
         @submit="onSearchSubmit"
         @clear="onSearchClear"
       />
+      <YoutubePlaylistImport />
     </div>
 
     <div :class="embedded ? 'flex flex-1 min-h-0 flex-col overflow-hidden' : ''">

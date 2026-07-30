@@ -20,12 +20,22 @@ import {
 import { downloadYoutubeAudio } from './youtube-download'
 import { uploadAudioFile } from './yoto-media'
 import { createOrUpdateContent } from './yoto-content'
+import {
+  isUncertainCreatePostError,
+  requireCreatedCardId,
+  UNCERTAIN_CREATE_POST_MESSAGE,
+  withContentCardId,
+} from './yoto-content-contract'
 import { mergeContentMetadata } from './yoto-metadata'
 import { fetchYotoCardDetail } from './yoto-card-detail'
 import { getYotoAccessToken } from './yoto'
 
 /** Process-local only — cleared on every container restart/redeploy. See docs/DEMO.md §4b. */
 const jobs = new Map<string, SaveJobState>()
+
+export type SaveTarget =
+  | { operation: 'create' }
+  | { operation: 'update'; cardId: string }
 
 function createTrackProgress(playlist: PlaylistTrack[]): SaveJobTrackProgress[] {
   return playlist.map((track, index) => ({
@@ -88,7 +98,7 @@ export function getSaveJob(jobId: string): SaveJobState | undefined {
 
 export function startSaveJob(
   event: H3Event,
-  cardId: string,
+  target: SaveTarget,
   playlist: PlaylistTrack[],
   cardTitle: string,
   baselinePlaylist: PlaylistTrack[],
@@ -98,7 +108,8 @@ export function startSaveJob(
   const acknowledgeCapacityRisk = options?.acknowledgeCapacityRisk === true
   const job: SaveJobState = {
     id: jobId,
-    cardId,
+    operation: target.operation,
+    cardId: target.operation === 'update' ? target.cardId : undefined,
     status: 'planning',
     progress: 0,
     operationProgress: 0,
@@ -114,7 +125,7 @@ export function startSaveJob(
         event,
         accessToken,
         jobId,
-        cardId,
+        target,
         playlist,
         cardTitle,
         baselinePlaylist,
@@ -138,7 +149,7 @@ async function runSaveJob(
   event: H3Event,
   accessToken: string,
   jobId: string,
-  cardId: string,
+  target: SaveTarget,
   playlist: PlaylistTrack[],
   cardTitle: string,
   baselinePlaylist: PlaylistTrack[],
@@ -148,9 +159,12 @@ async function runSaveJob(
   if (!job) return
 
   const uploadedByIndex = new Map<number, TranscodedAudioResult>()
+  let createOutcomeUncertain = false
 
   try {
-    const detail = await fetchYotoCardDetail(cardId, accessToken)
+    const detail = target.operation === 'update'
+      ? await fetchYotoCardDetail(target.cardId, accessToken)
+      : undefined
 
     const plan = buildSavePlan(baselinePlaylist, playlist, detail)
     if (plan.errors.length > 0) {
@@ -290,8 +304,8 @@ async function runSaveJob(
       plan.tracks,
       uploadedByIndex,
       {
-        existingMetadataNote: detail.metadataNote,
-        existingContentVersion: detail.contentVersion,
+        existingMetadataNote: detail?.metadataNote,
+        existingContentVersion: detail?.contentVersion,
       },
     )
 
@@ -335,23 +349,45 @@ async function runSaveJob(
       }
     }
 
-    await createOrUpdateContent(accessToken, {
-      cardId,
-      title: cardTitle,
-      content: {
-        version: built.contentVersion,
-        chapters: built.chapters,
-      },
-      metadata: mergeContentMetadata(detail.metadata, {
-        title: cardTitle,
-        note: built.note,
-        media: {
-          duration: built.totalDuration,
-          fileSize: built.totalFileSize,
-          readableFileSize: Math.round((built.totalFileSize / 1024 / 1024) * 10) / 10,
+    let response
+    try {
+      response = await createOrUpdateContent(accessToken, withContentCardId(
+        target.operation,
+        target.operation === 'update' ? target.cardId : undefined,
+        {
+          title: cardTitle,
+          content: {
+            version: built.contentVersion,
+            chapters: built.chapters,
+          },
+          metadata: mergeContentMetadata(detail?.metadata, {
+            title: cardTitle,
+            note: built.note,
+            media: {
+              duration: built.totalDuration,
+              fileSize: built.totalFileSize,
+              readableFileSize: Math.round((built.totalFileSize / 1024 / 1024) * 10) / 10,
+            },
+          }),
         },
-      }),
-    })
+      ))
+    }
+    catch (err: unknown) {
+      if (target.operation === 'create' && isUncertainCreatePostError(err)) {
+        createOutcomeUncertain = true
+        throw createError({
+          statusCode: 502,
+          message: UNCERTAIN_CREATE_POST_MESSAGE,
+        })
+      }
+      throw err
+    }
+
+    if (target.operation === 'create') {
+      createOutcomeUncertain = true
+      updateJob(jobId, { cardId: requireCreatedCardId(response) })
+      createOutcomeUncertain = false
+    }
 
     updateJob(jobId, { status: 'complete', progress: 100, operationProgress: 100 })
   }
@@ -371,7 +407,12 @@ async function runSaveJob(
       }
     }
 
-    updateJob(jobId, { status: 'failed', error: message, progress: 100 })
+    updateJob(jobId, {
+      status: 'failed',
+      error: message,
+      outcomeUncertain: createOutcomeUncertain || undefined,
+      progress: 100,
+    })
   }
 }
 

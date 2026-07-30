@@ -44,6 +44,12 @@ Phone layout for the three-panel editor. On small screens YouTube result titles 
 
 Optional per-result toggle to expand YouTube chapters into separate playlist tracks. Must compose cleanly with auto ~1-hour long-track splitting.
 
+### First-class chapter and track editing
+
+Preserve Yoto’s nested playlist model in the editor: add, rename, reorder, and delete chapters; allow multiple tracks per chapter; and expose track end behavior where useful.
+
+Use [`@lizozom/yoto`](https://github.com/lizozom/yoto-cli) as an API/schema reference or evaluate its MIT-licensed library directly. Keep Louis’s browser PKCE session authoritative rather than shelling out to a host-installed CLI, so the feature also works in Docker.
+
 ### Desktop app wrapper (Electron or Tauri)
 
 Package Louis as a cross-OS executable so less technical users can run it without Docker/GitHub CLI — consumer-friendly install alongside the one-click hosting work.
