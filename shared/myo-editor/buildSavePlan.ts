@@ -5,11 +5,13 @@ import { toYotoTrackReuseSnapshot } from './yotoTrackPayload'
 
 function reuseSnapshotForTrack(
   track: PlaylistTrack,
-  detail: YotoCardDetail,
+  detail?: YotoCardDetail,
 ): YotoTrackReuseSnapshot | null {
   if (track.yotoReuse?.trackUrl?.startsWith('yoto:#')) {
     return track.yotoReuse
   }
+
+  if (!detail) return null
 
   const original = findOriginalTrack(detail, track)
   if (original && isYotoHostedTrack(original)) {
@@ -22,7 +24,7 @@ function reuseSnapshotForTrack(
 function classifyTrack(
   track: PlaylistTrack,
   index: number,
-  detail: YotoCardDetail,
+  detail: YotoCardDetail | undefined,
   baselineIds: Set<string>,
 ): SaveTrackAction {
   if (track.source === 'unknown') {
@@ -99,11 +101,11 @@ function classifyTrack(
 export function buildSavePlan(
   baselinePlaylist: PlaylistTrack[],
   playlist: PlaylistTrack[],
-  detail: YotoCardDetail,
+  detail?: YotoCardDetail,
 ): SavePlan {
   const errors: string[] = []
 
-  if (detail.feedUrl?.trim()) {
+  if (detail?.feedUrl?.trim()) {
     errors.push('Podcast cards cannot be edited yet.')
     return { tracks: [], errors }
   }

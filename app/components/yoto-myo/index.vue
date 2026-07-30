@@ -25,7 +25,9 @@ const yoto = inject(YOTO_MYO_KEY, null) ?? useYotoMyo()
 const editor = inject(MYO_EDITOR_KEY, null)
 
 const selectedCardId = editor?.selectedCardId
+const isNewPlaylist = editor?.isNewPlaylist
 const editorLoading = editor?.loading
+const editorLocked = editor?.isPlaylistLocked
 
 const {
   cards,
@@ -50,6 +52,14 @@ function onSelectCard(card: YotoMyoCardType) {
   if (shouldSuppressCardClick()) return
   editor?.selectCard(card)
 }
+
+function onNewPlaylist() {
+  editor?.startNewPlaylist()
+}
+
+const newPlaylistDisabled = computed(
+  () => Boolean(editorLoading?.value || (isNewPlaylist?.value && editorLocked?.value)),
+)
 
 const cardCountLabel = computed(() => {
   if (!connected.value || status.value !== 'idle') return ''
@@ -107,6 +117,19 @@ watch(cardCountLabel, value => emit('update:count', value), { immediate: true })
       </div>
 
       <template v-else>
+        <div class="mb-3 flex justify-end">
+          <button
+            type="button"
+            class="maru-button maru-button--sm"
+            :class="isNewPlaylist ? 'bg-maru-blue text-maru-white' : 'bg-maru-white text-maru-black'"
+            :disabled="newPlaylistDisabled"
+            :aria-pressed="isNewPlaylist || undefined"
+            @click="onNewPlaylist"
+          >
+            <span class="maru-button__label">New Playlist</span>
+          </button>
+        </div>
+
         <p
           v-if="cards.length === 0"
           class="empty-state-meta py-8 text-center"
@@ -190,6 +213,19 @@ watch(cardCountLabel, value => emit('update:count', value), { immediate: true })
       </div>
 
       <template v-else>
+        <div class="shrink-0 px-3 pt-3 sm:px-4 sm:pt-4">
+          <button
+            type="button"
+            class="maru-button maru-button--sm w-full"
+            :class="isNewPlaylist ? 'bg-maru-blue text-maru-white' : 'bg-maru-white text-maru-black'"
+            :disabled="newPlaylistDisabled"
+            :aria-pressed="isNewPlaylist || undefined"
+            @click="onNewPlaylist"
+          >
+            <span class="maru-button__label">New Playlist</span>
+          </button>
+        </div>
+
         <p
           v-if="cards.length === 0"
           class="empty-state flex-1 min-h-0 w-full empty-state-meta"

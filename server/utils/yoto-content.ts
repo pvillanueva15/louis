@@ -1,6 +1,7 @@
 import type { YotoTrackPayload } from '#shared/myo-editor/types'
 import type { YotoCardMetadata } from '#shared/myo-editor/types'
 import { fetchYotoApi } from './yoto'
+import type { YotoContentResponse } from './yoto-content-contract'
 
 export interface YotoContentChapter {
   key: string
@@ -30,16 +31,11 @@ export interface CreateOrUpdateContentBody {
   }
 }
 
-interface CreateOrUpdateContentResponse {
-  card?: { cardId?: string }
-  cardId?: string
-}
-
 export async function createOrUpdateContent(
   accessToken: string,
   body: CreateOrUpdateContentBody,
-): Promise<CreateOrUpdateContentResponse> {
-  return fetchYotoApi<CreateOrUpdateContentResponse>('/content', accessToken, {
+): Promise<YotoContentResponse> {
+  return fetchYotoApi<YotoContentResponse>('/content', accessToken, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,
