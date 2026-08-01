@@ -1,6 +1,12 @@
 import type { YotoCardDetail, YotoTrackDetail } from '#shared/myo-editor/types'
 import type { YotoCardMetadata } from '#shared/myo-editor/types'
-import { fetchYotoApi } from './yoto'
+import {
+  fetchRawYotoCard,
+} from './yoto-card-raw'
+import {
+  deriveRawCardRevision,
+  type RawYotoCard,
+} from './yoto-card-raw-contract'
 
 interface YotoApiTrack {
   key: string
@@ -33,14 +39,6 @@ interface YotoApiCardDetail {
   metadata?: YotoCardMetadata
 }
 
-interface YotoApiCardDetailResponse {
-  card?: YotoApiCardDetail
-}
-
-function unwrapCard(data: YotoApiCardDetailResponse & YotoApiCardDetail): YotoApiCardDetail {
-  return data.card ?? data
-}
-
 function mapChannels(channels: string | number | undefined): 'stereo' | 'mono' | undefined {
   if (channels === 'stereo' || channels === 2 || channels === '2') return 'stereo'
   if (channels === 'mono' || channels === 1 || channels === '1') return 'mono'
@@ -65,7 +63,10 @@ function mapTrack(chapterKey: string, track: YotoApiTrack): YotoTrackDetail {
   }
 }
 
-export function mapYotoCardDetail(data: YotoApiCardDetail): YotoCardDetail {
+export function mapYotoCardDetail(
+  data: YotoApiCardDetail,
+  revision: string,
+): YotoCardDetail {
   const chapters = (data.content?.chapters ?? []).map(chapter => ({
     key: chapter.key,
     title: chapter.title,
@@ -80,6 +81,7 @@ export function mapYotoCardDetail(data: YotoApiCardDetail): YotoCardDetail {
   return {
     cardId: data.cardId,
     title: data.title,
+    revision,
     contentVersion: data.content?.version ?? null,
     metadataNote: metadata?.note ?? null,
     feedUrl: metadata?.feedUrl ?? null,
@@ -92,9 +94,9 @@ export async function fetchYotoCardDetail(
   cardId: string,
   accessToken: string,
 ): Promise<YotoCardDetail> {
-  const raw = await fetchYotoApi<YotoApiCardDetailResponse & YotoApiCardDetail>(
-    `/content/${cardId}`,
-    accessToken,
+  const raw = await fetchRawYotoCard(cardId, accessToken)
+  return mapYotoCardDetail(
+    raw as RawYotoCard & YotoApiCardDetail,
+    deriveRawCardRevision(raw),
   )
-  return mapYotoCardDetail(unwrapCard(raw))
 }

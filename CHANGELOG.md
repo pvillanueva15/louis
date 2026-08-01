@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Existing Yoto playlists and MYO cards can now be renamed directly in the editor.
 - Standalone Yoto playlist creation from local drafts with reviewed YouTube tracks and explicit Create confirmation.
 - Review-and-append import for public YouTube playlists, including pagination, duplicate detection, availability checks, and MYO capacity filtering.
 - yt-dlp download outcome logs (`ok` / `fail` / `escalate` / `coalesce`) so Railway logs show whether cookies recovered after bot checks.

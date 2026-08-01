@@ -1,4 +1,5 @@
 import { getScopeCookie, hasContentManageScope } from '../../../../utils/yoto-auth'
+import { requireValidUpdateCardTitle } from '../../../../utils/yoto-card-save-contract'
 import { startSaveJob } from '../../../../utils/save-jobs'
 import { getYotoAccessToken } from '../../../../utils/yoto'
 import type { PlaylistTrack } from '#shared/myo-editor/types'
@@ -31,12 +32,13 @@ export default defineEventHandler(async (event) => {
   if (!Array.isArray(body?.playlist) || body.playlist.length === 0) {
     throw createError({ statusCode: 400, statusMessage: 'playlist is required' })
   }
+  const cardTitle = requireValidUpdateCardTitle(body?.cardTitle)
 
   const job = startSaveJob(
     event,
     { operation: 'update', cardId },
     body.playlist,
-    body.cardTitle?.trim() || 'My Card',
+    cardTitle,
     Array.isArray(body.baselinePlaylist) ? body.baselinePlaylist : [],
     { acknowledgeCapacityRisk: body.acknowledgeCapacityRisk === true },
   )

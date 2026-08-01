@@ -61,6 +61,7 @@ export interface YotoCardMetadata {
 export interface YotoCardDetail {
   cardId: string
   title: string
+  revision: string
   contentVersion: string | null
   metadataNote: string | null
   feedUrl: string | null

@@ -1,4 +1,5 @@
-import type { PlaylistTrack, SaveOperation } from './types'
+import type { PlaylistTrack, SaveJobPhase, SaveOperation } from './types'
+import { getCardTitleValidationError } from '../yoto/cardMutation.ts'
 
 export const NEW_PLAYLIST_SAVE_KEY = 'new-playlist-draft'
 export const UNCERTAIN_CREATE_START_MESSAGE
@@ -7,6 +8,24 @@ export const UNCERTAIN_CREATE_START_MESSAGE
 export type ClientSaveTarget =
   | { operation: 'create' }
   | { operation: 'update'; cardId: string }
+
+export interface CardSaveSnapshot {
+  playlist: PlaylistTrack[]
+  baseline: PlaylistTrack[]
+  cardTitle: string
+  baselineCardTitle: string
+  cardRevision: string
+}
+
+export function cloneCardSaveSnapshot(snapshot: CardSaveSnapshot): CardSaveSnapshot {
+  return {
+    playlist: snapshot.playlist.map(track => ({ ...track })),
+    baseline: snapshot.baseline.map(track => ({ ...track })),
+    cardTitle: snapshot.cardTitle,
+    baselineCardTitle: snapshot.baselineCardTitle,
+    cardRevision: snapshot.cardRevision,
+  }
+}
 
 export type ClientSaveIdentity =
   | {
@@ -69,9 +88,8 @@ export function getStandalonePlaylistValidationError(
   title: string,
   playlist: PlaylistTrack[],
 ): string | null {
-  if (!title.trim()) {
-    return 'Give this playlist a title before creating it.'
-  }
+  const titleError = getCardTitleValidationError(title)
+  if (titleError) return titleError
   if (playlist.length === 0) {
     return 'Add at least one YouTube track before creating this playlist.'
   }
@@ -109,6 +127,17 @@ export function notifyConfirmedPlaylistCreated(
   if (operation === 'create') notify?.(cardId)
 }
 
+export async function notifyConfirmedCardUpdated(
+  operation: SaveOperation,
+  status: SaveJobPhase,
+  cardId: string,
+  notify?: (cardId: string) => void | Promise<void>,
+): Promise<void> {
+  if (operation === 'update' && status === 'complete') {
+    await notify?.(cardId)
+  }
+}
+
 export function classifyCreateStartFailure(error: unknown): {
   message: string
   outcomeUncertain: boolean
@@ -133,6 +162,22 @@ export function classifyCreateStartFailure(error: unknown): {
   }
 }
 
-export function shouldWarnBeforeUnload(isDirty: boolean, isLocked: boolean): boolean {
-  return isDirty && !isLocked
+export interface EditorOperationLocks {
+  backgroundSaveActive: boolean
+  titleMutationActive: boolean
+}
+
+export function shouldBlockEditorNavigation(
+  isNewPlaylist: boolean,
+  locks: EditorOperationLocks,
+): boolean {
+  return locks.titleMutationActive
+    || (isNewPlaylist && locks.backgroundSaveActive)
+}
+
+export function shouldWarnBeforeUnload(
+  isDirty: boolean,
+  locks: EditorOperationLocks,
+): boolean {
+  return isDirty && !locks.backgroundSaveActive
 }

@@ -25,9 +25,8 @@ const yoto = inject(YOTO_MYO_KEY, null) ?? useYotoMyo()
 const editor = inject(MYO_EDITOR_KEY, null)
 
 const selectedCardId = editor?.selectedCardId
-const isNewPlaylist = editor?.isNewPlaylist
 const editorLoading = editor?.loading
-const editorLocked = editor?.isPlaylistLocked
+const editorNavigationLocked = editor?.isNavigationLocked
 
 const {
   cards,
@@ -58,7 +57,7 @@ function onNewPlaylist() {
 }
 
 const newPlaylistDisabled = computed(
-  () => Boolean(editorLoading?.value || (isNewPlaylist?.value && editorLocked?.value)),
+  () => Boolean(editorLoading?.value || editorNavigationLocked?.value),
 )
 
 const cardCountLabel = computed(() => {

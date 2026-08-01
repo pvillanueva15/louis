@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { shouldPreserveAuxiliaryRefreshState } from './refreshPolicy.ts'
 
 describe('auxiliary Yoto refresh failure policy', () => {
-  it('preserves a connected editor after a transient post-create refresh failure', () => {
+  it('preserves a connected editor after a transient post-mutation refresh failure', () => {
     assert.equal(
       shouldPreserveAuxiliaryRefreshState(true, true, 502),
       true,

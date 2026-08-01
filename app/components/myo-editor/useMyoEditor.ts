@@ -3,17 +3,27 @@ import type { PlaylistTrack } from '~/components/playlist/types'
 import { playlistRowId } from '#shared/myo-editor/playlistRowId'
 import {
   classifyCreateStartFailure,
+  cloneCardSaveSnapshot,
+  type CardSaveSnapshot,
   type ClientSaveIdentity,
   type ClientSaveTarget,
   getStandalonePlaylistValidationError,
   isPlaylistEditorActive,
   NEW_PLAYLIST_SAVE_KEY,
+  notifyConfirmedCardUpdated,
   notifyConfirmedPlaylistCreated,
   resolveClientSaveTarget,
   resolveSavedCardId,
+  shouldBlockEditorNavigation,
   shouldWarnBeforeUnload,
 } from '#shared/myo-editor/standalonePlaylist'
 import type { SaveJobPhase } from '#shared/myo-editor/types'
+import {
+  classifyExistingCardChanges,
+  getCardTitleValidationError,
+  resetCardTitle,
+  type MutateCardRequest,
+} from '#shared/yoto/cardMutation'
 import type { YotoMyoCard } from '~/components/yoto-myo/types'
 import { cardToPlaylist } from './cardToPlaylist'
 import {
@@ -33,12 +43,6 @@ export interface SaveProgress {
   operationProgress: number
   error?: string
   tracks: SaveJobState['tracks']
-}
-
-export interface CardSaveSnapshot {
-  playlist: PlaylistTrack[]
-  baseline: PlaylistTrack[]
-  cardTitle: string
 }
 
 export interface CardSaveState {
@@ -65,9 +69,12 @@ export interface MyoEditorContext {
   loading: Ref<boolean>
   updating: ComputedRef<boolean>
   isPlaylistLocked: ComputedRef<boolean>
+  isNavigationLocked: ComputedRef<boolean>
   saveProgress: ComputedRef<SaveProgress | null>
   errorMessage: Ref<string>
   createOutcomeUncertain: Ref<boolean>
+  titleDirty: ComputedRef<boolean>
+  playlistDirty: ComputedRef<boolean>
   isDirty: ComputedRef<boolean>
   isCardSaving: (cardId: string) => boolean
   startNewPlaylist: () => boolean
@@ -87,14 +94,6 @@ function playlistSnapshot(playlist: PlaylistTrack[]): string {
 
 function clonePlaylist(playlist: PlaylistTrack[]): PlaylistTrack[] {
   return playlist.map(item => ({ ...item }))
-}
-
-function cloneSnapshot(snapshot: CardSaveSnapshot): CardSaveSnapshot {
-  return {
-    cardTitle: snapshot.cardTitle,
-    playlist: clonePlaylist(snapshot.playlist),
-    baseline: clonePlaylist(snapshot.baseline),
-  }
 }
 
 function isTerminalStatus(status: SaveJobPhase): boolean {
@@ -140,6 +139,7 @@ const maxOverallProgressBySaveKey = new Map<string, number>()
 
 export interface UseMyoEditorOptions {
   onPlaylistCreated?: (cardId: string) => void
+  onCardUpdated?: (cardId: string) => void | Promise<void>
 }
 
 function monotonicOverallProgress(saveKey: string, next: number): number {
@@ -158,6 +158,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const selectedCardId = ref<string | null>(null)
   const isNewPlaylist = ref(false)
   const cardTitle = ref('')
+  const baselineCardTitle = ref('')
+  const cardRevision = ref('')
   const playlist = ref<PlaylistTrack[]>([])
   const baselinePlaylist = ref<PlaylistTrack[]>([])
   const originalCardDetail = ref<YotoCardDetail | null>(null)
@@ -165,6 +167,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const loading = ref(false)
   const errorMessage = ref('')
   const createOutcomeUncertain = ref(false)
+  const titleMutationCardId = ref<string | null>(null)
   const activeSaves = ref(new Map<string, CardSaveState>())
 
   function touchActiveSaves() {
@@ -193,17 +196,33 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function isCardSaving(cardId: string): boolean {
-    return isSaveActive(cardId)
+    return titleMutationCardId.value === cardId || isSaveActive(cardId)
   }
 
   const isEditing = computed(() =>
     isPlaylistEditorActive(selectedCardId.value, isNewPlaylist.value),
   )
 
-  const isDirty = computed(
-    () => isNewPlaylist.value
+  const playlistDirty = computed(
+    () => playlistSnapshot(playlist.value) !== playlistSnapshot(baselinePlaylist.value),
+  )
+
+  const existingCardChanges = computed(() =>
+    classifyExistingCardChanges(
+      cardTitle.value,
+      baselineCardTitle.value,
+      playlistDirty.value,
+    ),
+  )
+
+  const titleDirty = computed(
+    () => !isNewPlaylist.value && existingCardChanges.value.titleDirty,
+  )
+
+  const isDirty = computed(() =>
+    isNewPlaylist.value
       ? Boolean(cardTitle.value.trim() || playlist.value.length > 0)
-      : playlistSnapshot(playlist.value) !== playlistSnapshot(baselinePlaylist.value),
+      : existingCardChanges.value.isDirty,
   )
 
   const selectedSaveKey = computed(() =>
@@ -216,10 +235,26 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     return getSaveState(saveKey) ?? null
   })
 
-  const isPlaylistLocked = computed(() => {
+  const backgroundSaveActive = computed(() => {
     const state = selectedSaveState.value
     return Boolean(state && !isTerminalStatus(state.status))
   })
+
+  const titleMutationActive = computed(
+    () => titleMutationCardId.value !== null
+      && titleMutationCardId.value === selectedCardId.value,
+  )
+
+  const isPlaylistLocked = computed(
+    () => titleMutationActive.value || backgroundSaveActive.value,
+  )
+
+  const isNavigationLocked = computed(() =>
+    shouldBlockEditorNavigation(isNewPlaylist.value, {
+      backgroundSaveActive: backgroundSaveActive.value,
+      titleMutationActive: titleMutationActive.value,
+    }),
+  )
 
   const updating = computed(() => isPlaylistLocked.value)
 
@@ -230,9 +265,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   })
 
   function restoreSnapshot(snapshot: CardSaveSnapshot) {
-    playlist.value = clonePlaylist(snapshot.playlist)
-    baselinePlaylist.value = clonePlaylist(snapshot.baseline)
-    cardTitle.value = snapshot.cardTitle
+    const restored = cloneCardSaveSnapshot(snapshot)
+    playlist.value = restored.playlist
+    baselinePlaylist.value = restored.baseline
+    cardTitle.value = restored.cardTitle
+    baselineCardTitle.value = restored.baselineCardTitle
+    cardRevision.value = restored.cardRevision
   }
 
   async function reloadCardFromApi(cardId: string, titleFallback?: string) {
@@ -243,6 +281,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     playlist.value = result.tracks
     baselinePlaylist.value = clonePlaylist(playlist.value)
     cardTitle.value = titleFallback || detail.title
+    baselineCardTitle.value = cardTitle.value
+    cardRevision.value = detail.revision
   }
 
   async function finalizeSaveSuccess(cardId: string, titleFallback?: string) {
@@ -411,6 +451,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         promoteCreatedPlaylist(saveKey, savedCardId)
       }
       await finalizeSaveSuccess(savedCardId, titleFallback)
+      await notifyConfirmedCardUpdated(
+        target.operation,
+        job.status,
+        savedCardId,
+        options.onCardUpdated,
+      )
       notifyConfirmedPlaylistCreated(target.operation, savedCardId, options.onPlaylistCreated)
     }
     catch (err: unknown) {
@@ -461,7 +507,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       progress: 0,
       operationProgress: 0,
       tracks: [],
-      snapshot: cloneSnapshot(snapshot),
+      snapshot: cloneCardSaveSnapshot(snapshot),
       startedAt,
     }
     maxOverallProgressBySaveKey.set(identity.saveKey, 0)
@@ -490,6 +536,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
           if (job.status === 'complete' && selectedCardId.value === cardId) {
             await finalizeSaveSuccess(cardId)
           }
+          await notifyConfirmedCardUpdated(
+            'update',
+            job.status,
+            cardId,
+            options.onCardUpdated,
+          )
           continue
         }
 
@@ -497,6 +549,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
           playlist: [],
           baseline: [],
           cardTitle: '',
+          baselineCardTitle: '',
+          cardRevision: '',
         }
         setSaveState(
           cardId,
@@ -520,7 +574,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   async function selectCard(card: YotoMyoCard) {
-    if (loading.value) return
+    if (loading.value || isNavigationLocked.value) return
 
     const currentSaveKey = selectedSaveKey.value
     const currentCardSaving = currentSaveKey ? isSaveActive(currentSaveKey) : false
@@ -555,7 +609,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       }
 
       try {
-        await reloadCardFromApi(card.cardId, card.title)
+        await reloadCardFromApi(card.cardId)
       }
       catch (err: unknown) {
         const e = err as { statusMessage?: string; message?: string }
@@ -563,6 +617,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         isPodcast.value = false
         playlist.value = []
         baselinePlaylist.value = []
+        baselineCardTitle.value = ''
+        cardRevision.value = ''
         originalCardDetail.value = null
       }
       finally {
@@ -572,7 +628,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     }
 
     try {
-      await reloadCardFromApi(card.cardId, card.title)
+      await reloadCardFromApi(card.cardId)
     }
     catch (err: unknown) {
       const e = err as { statusMessage?: string; message?: string }
@@ -580,6 +636,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       isPodcast.value = false
       playlist.value = []
       baselinePlaylist.value = []
+      baselineCardTitle.value = ''
+      cardRevision.value = ''
       originalCardDetail.value = null
     }
     finally {
@@ -588,7 +646,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function startNewPlaylist(): boolean {
-    if (loading.value || (isNewPlaylist.value && isPlaylistLocked.value)) return false
+    if (loading.value || isNavigationLocked.value) return false
 
     const currentSaveKey = selectedSaveKey.value
     const currentCardSaving = currentSaveKey ? isSaveActive(currentSaveKey) : false
@@ -602,6 +660,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     selectedCardId.value = null
     isNewPlaylist.value = true
     cardTitle.value = ''
+    baselineCardTitle.value = ''
+    cardRevision.value = ''
     isPodcast.value = false
     playlist.value = []
     baselinePlaylist.value = []
@@ -612,6 +672,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function clearSelection(force = false): boolean {
+    if (isNavigationLocked.value) return false
+
     const currentSaveKey = selectedSaveKey.value
     const currentCardSaving = currentSaveKey ? isSaveActive(currentSaveKey) : false
 
@@ -625,6 +687,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     selectedCardId.value = null
     isNewPlaylist.value = false
     cardTitle.value = ''
+    baselineCardTitle.value = ''
+    cardRevision.value = ''
     isPodcast.value = false
     playlist.value = []
     baselinePlaylist.value = []
@@ -637,7 +701,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   function resetChanges() {
     if (!isDirty.value || isPlaylistLocked.value) return
     playlist.value = clonePlaylist(baselinePlaylist.value)
-    if (isNewPlaylist.value) cardTitle.value = ''
+    cardTitle.value = resetCardTitle(isNewPlaylist.value, baselineCardTitle.value)
     errorMessage.value = ''
     if (isNewPlaylist.value) createOutcomeUncertain.value = false
   }
@@ -707,6 +771,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       playlist: clonePlaylist(playlist.value),
       baseline: [],
       cardTitle: cardTitle.value.trim(),
+      baselineCardTitle: '',
+      cardRevision: '',
     }
 
     try {
@@ -722,7 +788,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     }
   }
 
-  async function updateCard(options?: { acknowledgeCapacityRisk?: boolean }) {
+  async function updateCard(saveOptions?: { acknowledgeCapacityRisk?: boolean }) {
     const cardId = selectedCardId.value
     if (!cardId || !isDirty.value || loading.value || isPlaylistLocked.value) return
 
@@ -731,7 +797,59 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       return
     }
 
-    if (!options?.acknowledgeCapacityRisk) {
+    const titleError = getCardTitleValidationError(cardTitle.value)
+    if (titleError) {
+      errorMessage.value = titleError
+      playEvent('saveError')
+      return
+    }
+
+    if (existingCardChanges.value.titleOnly) {
+      if (!cardRevision.value) {
+        errorMessage.value = 'Reload this card before renaming it.'
+        playEvent('saveError')
+        return
+      }
+
+      const request: MutateCardRequest = {
+        expectedRevision: cardRevision.value,
+        mutations: [{
+          kind: 'rename-card',
+          expectedTitle: baselineCardTitle.value,
+          title: cardTitle.value.trim(),
+        }],
+      }
+
+      errorMessage.value = ''
+      titleMutationCardId.value = cardId
+      try {
+        await $fetch(`/api/yoto/content/${cardId}/mutate`, {
+          method: 'POST',
+          body: request,
+        })
+        await reloadCardFromApi(cardId)
+        await options.onCardUpdated?.(cardId)
+        playEvent('saveComplete')
+      }
+      catch (err: unknown) {
+        const e = err as {
+          statusMessage?: string
+          data?: { statusMessage?: string }
+          message?: string
+        }
+        errorMessage.value = e.data?.statusMessage
+          ?? e.statusMessage
+          ?? e.message
+          ?? 'Failed to rename card'
+        playEvent('saveError')
+      }
+      finally {
+        titleMutationCardId.value = null
+      }
+      return
+    }
+
+    if (playlistDirty.value && !saveOptions?.acknowledgeCapacityRisk) {
       const limitError = getPlaylistPreflightLimitError(playlist.value)
       if (limitError) {
         errorMessage.value = limitError
@@ -745,12 +863,14 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     const snapshot: CardSaveSnapshot = {
       playlist: clonePlaylist(playlist.value),
       baseline: clonePlaylist(baselinePlaylist.value),
-      cardTitle: cardTitle.value,
+      cardTitle: cardTitle.value.trim(),
+      baselineCardTitle: baselineCardTitle.value,
+      cardRevision: cardRevision.value,
     }
 
     try {
       await startSaveJob({ operation: 'update', cardId }, snapshot, {
-        acknowledgeCapacityRisk: options?.acknowledgeCapacityRisk === true,
+        acknowledgeCapacityRisk: saveOptions?.acknowledgeCapacityRisk === true,
       })
     }
     catch (err: unknown) {
@@ -769,9 +889,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
   onMounted(() => {
     stopBeforeUnloadWatch = watch(
-      [isDirty, isPlaylistLocked],
-      ([dirty, locked]) => {
-        const shouldAttach = shouldWarnBeforeUnload(dirty, locked)
+      [isDirty, backgroundSaveActive, titleMutationActive],
+      ([dirty, saveActive, mutationActive]) => {
+        const shouldAttach = shouldWarnBeforeUnload(dirty, {
+          backgroundSaveActive: saveActive,
+          titleMutationActive: mutationActive,
+        })
         if (shouldAttach === beforeUnloadAttached) return
 
         window[shouldAttach ? 'addEventListener' : 'removeEventListener'](
@@ -802,9 +925,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     loading,
     updating,
     isPlaylistLocked,
+    isNavigationLocked,
     saveProgress,
     errorMessage,
     createOutcomeUncertain,
+    titleDirty,
+    playlistDirty,
     isDirty,
     isCardSaving,
     startNewPlaylist,

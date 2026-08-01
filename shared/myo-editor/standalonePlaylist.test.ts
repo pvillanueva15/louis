@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { PlaylistTrack } from './types.ts'
+import { resetCardTitle } from '../yoto/cardMutation.ts'
 import {
   classifyCreateStartFailure,
+  cloneCardSaveSnapshot,
   getStandalonePlaylistValidationError,
   isPlaylistEditorActive,
+  notifyConfirmedCardUpdated,
   notifyConfirmedPlaylistCreated,
   resolveClientSaveTarget,
   resolveSavedCardId,
+  shouldBlockEditorNavigation,
   shouldWarnBeforeUnload,
 } from './standalonePlaylist.ts'
 
@@ -56,7 +60,11 @@ describe('standalone playlist drafts', () => {
   it('requires a title and supported YouTube tracks before create', () => {
     assert.equal(
       getStandalonePlaylistValidationError('   ', [youtubeTrack()]),
-      'Give this playlist a title before creating it.',
+      'Give this playlist a title.',
+    )
+    assert.match(
+      getStandalonePlaylistValidationError('x'.repeat(141), [youtubeTrack()]) ?? '',
+      /140/,
     )
     assert.equal(
       getStandalonePlaylistValidationError('Bedtime', []),
@@ -94,6 +102,44 @@ describe('standalone playlist drafts', () => {
     assert.deepEqual(notified, ['created-card'])
   })
 
+  it('notifies confirmed mixed updates whether selected or navigated away', async () => {
+    const notified: string[] = []
+    const notify = (cardId: string) => notified.push(cardId)
+
+    await notifyConfirmedCardUpdated('update', 'complete', 'selected-card', notify)
+    await notifyConfirmedCardUpdated('update', 'complete', 'background-card', notify)
+    await notifyConfirmedCardUpdated('update', 'posting', 'pending-card', notify)
+    await notifyConfirmedCardUpdated('update', 'failed', 'failed-card', notify)
+    await notifyConfirmedCardUpdated('create', 'complete', 'created-card', notify)
+
+    assert.deepEqual(notified, ['selected-card', 'background-card'])
+  })
+
+  it('restores the source card identity after a background save revisit and failure', () => {
+    const sourceSnapshot = cloneCardSaveSnapshot({
+      playlist: [youtubeTrack('edited-a')],
+      baseline: [youtubeTrack('baseline-a')],
+      cardTitle: 'Edited A',
+      baselineCardTitle: 'Original A',
+      cardRevision: 'revision-a',
+    })
+
+    let editorIdentity = {
+      baselineCardTitle: 'Original B',
+      cardRevision: 'revision-b',
+    }
+    const restoredAfterViewingCardB = cloneCardSaveSnapshot(sourceSnapshot)
+    editorIdentity = restoredAfterViewingCardB
+
+    assert.equal(editorIdentity.baselineCardTitle, 'Original A')
+    assert.equal(editorIdentity.cardRevision, 'revision-a')
+    assert.equal(
+      resetCardTitle(false, editorIdentity.baselineCardTitle),
+      'Original A',
+    )
+    assert.equal(editorIdentity.cardRevision, 'revision-a')
+  })
+
   it('keeps confirmed pre-job create failures retryable', () => {
     assert.deepEqual(
       classifyCreateStartFailure({
@@ -121,9 +167,68 @@ describe('standalone playlist drafts', () => {
     assert.match(failure.message, /Check My Cards before trying again/)
   })
 
-  it('warns before unload only for dirty, unlocked editor state', () => {
-    assert.equal(shouldWarnBeforeUnload(true, false), true)
-    assert.equal(shouldWarnBeforeUnload(false, false), false)
-    assert.equal(shouldWarnBeforeUnload(true, true), false)
+  it('allows existing background saves to continue through navigation', () => {
+    assert.equal(
+      shouldBlockEditorNavigation(false, {
+        backgroundSaveActive: false,
+        titleMutationActive: false,
+      }),
+      false,
+    )
+    assert.equal(
+      shouldBlockEditorNavigation(false, {
+        backgroundSaveActive: true,
+        titleMutationActive: false,
+      }),
+      false,
+    )
+    assert.equal(
+      shouldBlockEditorNavigation(true, {
+        backgroundSaveActive: true,
+        titleMutationActive: false,
+      }),
+      true,
+    )
+    assert.equal(
+      shouldBlockEditorNavigation(false, {
+        backgroundSaveActive: false,
+        titleMutationActive: true,
+      }),
+      true,
+    )
+  })
+
+  it('retains unload protection throughout a foreground title mutation', () => {
+    const beforeRename = {
+      backgroundSaveActive: false,
+      titleMutationActive: false,
+    }
+    const duringRename = {
+      backgroundSaveActive: false,
+      titleMutationActive: true,
+    }
+
+    assert.equal(shouldWarnBeforeUnload(true, beforeRename), true)
+    assert.equal(shouldWarnBeforeUnload(true, duringRename), true)
+  })
+
+  it('updates unload protection after title mutation success or failure', () => {
+    const renameFinished = {
+      backgroundSaveActive: false,
+      titleMutationActive: false,
+    }
+
+    assert.equal(shouldWarnBeforeUnload(false, renameFinished), false)
+    assert.equal(shouldWarnBeforeUnload(true, renameFinished), true)
+  })
+
+  it('suppresses unload protection for resumable background saves', () => {
+    assert.equal(
+      shouldWarnBeforeUnload(true, {
+        backgroundSaveActive: true,
+        titleMutationActive: false,
+      }),
+      false,
+    )
   })
 })

@@ -135,7 +135,7 @@ export function useYotoMyo() {
     await checkStatus()
   }
 
-  async function refreshAfterCreate() {
+  async function refreshAfterContentMutation() {
     await checkStatus({ auxiliary: true })
   }
 
@@ -153,7 +153,7 @@ export function useYotoMyo() {
     connect,
     disconnect,
     refresh,
-    refreshAfterCreate,
+    refreshAfterContentMutation,
     fetchCards,
   }
 }

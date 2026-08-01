@@ -10,6 +10,7 @@ import {
   getStandalonePlaylistValidationError,
   UNCERTAIN_CREATE_START_MESSAGE,
 } from '#shared/myo-editor/standalonePlaylist'
+import { getCardTitleValidationError } from '#shared/yoto/cardMutation'
 
 const editor = inject(MYO_EDITOR_KEY, null)
 const { playEvent } = useUiSound()
@@ -26,6 +27,7 @@ const isPodcast = editor?.isPodcast
 const errorMessage = editor?.errorMessage
 const createOutcomeUncertain = editor?.createOutcomeUncertain
 const playlist = editor?.playlist
+const playlistDirty = editor?.playlistDirty
 
 const showCapacityConfirm = ref(false)
 
@@ -49,6 +51,12 @@ const createValidationError = computed(() =>
     : null,
 )
 
+const updateTitleValidationError = computed(() =>
+  !isNewPlaylist?.value && selectedCardId?.value
+    ? getCardTitleValidationError(cardTitle?.value ?? '')
+    : null,
+)
+
 const footerHint = computed(() => {
   if (isPodcast?.value) return 'Podcast cards cannot be edited yet.'
   if (createOutcomeUncertain?.value) {
@@ -56,6 +64,7 @@ const footerHint = computed(() => {
   }
   if (errorMessage?.value) return errorMessage.value
   if (createValidationError.value) return createValidationError.value
+  if (updateTitleValidationError.value) return updateTitleValidationError.value
   if (overTrackLimit.value) return YOTO_MYO_TRACK_COUNT_MESSAGE
   return ''
 })
@@ -71,7 +80,11 @@ const canSave = computed(() => {
   if (isNewPlaylist?.value) {
     return !createValidationError.value && !createOutcomeUncertain?.value
   }
-  return Boolean(selectedCardId?.value && isDirty?.value)
+  return Boolean(
+    selectedCardId?.value
+    && isDirty?.value
+    && !updateTitleValidationError.value,
+  )
 })
 
 const actionLabel = computed(() => {
@@ -104,7 +117,7 @@ function onSave() {
     return
   }
 
-  if (overCapacity.value) {
+  if (overCapacity.value && (isNewPlaylist?.value || playlistDirty?.value)) {
     playEvent('buttonPrimary')
     showCapacityConfirm.value = true
     return

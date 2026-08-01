@@ -30,7 +30,7 @@
 
         <template #playlist-header>
           <label
-            v-if="isNewPlaylist"
+            v-if="isEditing"
             class="flex items-center"
           >
             <span class="sr-only">Playlist title</span>
@@ -40,7 +40,8 @@
               class="w-48 max-w-[30vw] rounded-maru border-2 border-maru-black bg-maru-white px-2 py-1 font-maru-mono text-sm text-maru-black"
               placeholder="Playlist title"
               autocomplete="off"
-              :disabled="isPlaylistLocked"
+              maxlength="140"
+              :disabled="isPlaylistLocked || isPodcast"
             >
           </label>
         </template>
@@ -110,8 +111,9 @@ provide(YOTO_MYO_KEY, yoto)
 
 const editor = useMyoEditor({
   onPlaylistCreated: () => {
-    void yoto.refreshAfterCreate()
+    void yoto.refreshAfterContentMutation()
   },
+  onCardUpdated: () => yoto.refreshAfterContentMutation(),
 })
 provide(MYO_EDITOR_KEY, editor)
 
@@ -126,6 +128,7 @@ const {
   isEditing,
   isNewPlaylist,
   isPlaylistLocked,
+  isPodcast,
   cardTitle,
 } = editor
 const { connected, status } = yoto
