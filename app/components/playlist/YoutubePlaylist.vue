@@ -7,6 +7,16 @@ import PlaylistCardLoading from './PlaylistCardLoading.vue'
 import PlaylistEmptyState from './PlaylistEmptyState.vue'
 import PlaylistItem from './PlaylistItem.vue'
 import PlaylistSaveProgress from './PlaylistSaveProgress.vue'
+import IconLibraryModal from '~/components/icon-library/IconLibraryModal.vue'
+import { useIconLibrary } from '~/components/icon-library/useIconLibrary'
+import type { PersonalIcon } from '#shared/yoto/iconContract'
+import {
+  canAssignTrackIcon,
+  resolveTrackIconPreview,
+  shouldInvalidatePersonalIconCache,
+  shouldLoadTrackIconPreviews,
+} from '#shared/myo-editor/trackIconAssignment'
+import type { PlaylistTrack } from './types'
 import {
   SAVE_PROGRESS_TEST_FIXTURE,
   useSaveProgressTestMode,
@@ -37,8 +47,102 @@ const {
   loading,
   cardTitle,
   selectedCardId,
+  isNewPlaylist,
+  isPodcast,
+  stageTrackIcon,
+  getEffectiveTrackIcon,
   clearSelection,
 } = editor
+
+const iconPickerTrack = ref<PlaylistTrack | null>(null)
+const iconPickerOpen = ref(false)
+const {
+  icons: personalIconsForPreview,
+  status: iconPreviewStatus,
+  load: loadIconPreviews,
+  invalidateAccountCache,
+} = useIconLibrary()
+
+const selectedTrackMediaId = computed(() => {
+  if (!iconPickerTrack.value) return null
+  const effective = getEffectiveTrackIcon(iconPickerTrack.value)
+  if (effective.source !== 'track' || !effective.reference?.startsWith('yoto:#')) return null
+  return effective.reference.slice('yoto:#'.length)
+})
+
+function showTrackIconControl(track: PlaylistTrack): boolean {
+  return Boolean(
+    selectedCardId.value
+    && !isNewPlaylist.value
+    && !isPodcast.value
+    && canAssignTrackIcon(track),
+  )
+}
+
+function displayedEffectiveTrackIcon(track: PlaylistTrack) {
+  return resolveTrackIconPreview(
+    getEffectiveTrackIcon(track),
+    personalIconsForPreview.value,
+  )
+}
+
+function openTrackIconPicker(track: PlaylistTrack) {
+  if (
+    !showTrackIconControl(track)
+    || loading.value
+    || isPlaylistLocked.value
+    || isYotoPlaylistBlocked.value
+  ) return
+  iconPickerTrack.value = track
+  iconPickerOpen.value = true
+}
+
+function chooseTrackIcon(icon: PersonalIcon) {
+  if (!iconPickerTrack.value) return
+  stageTrackIcon(iconPickerTrack.value, {
+    mode: 'icon',
+    mediaId: icon.mediaId,
+    previewUrl: icon.url,
+  })
+}
+
+function useChapterIcon() {
+  if (!iconPickerTrack.value) return
+  stageTrackIcon(iconPickerTrack.value, { mode: 'inherit' })
+}
+
+watch(iconPickerOpen, (open) => {
+  if (!open) iconPickerTrack.value = null
+})
+
+watch(
+  () => yoto?.connected.value ?? false,
+  (connected, previouslyConnected) => {
+    if (shouldInvalidatePersonalIconCache(connected, previouslyConnected)) {
+      invalidateAccountCache()
+    }
+  },
+)
+
+watch(
+  [
+    selectedCardId,
+    isPodcast,
+    () => yoto?.connected.value ?? false,
+    () => yoto?.status.value ?? 'disconnected',
+  ],
+  ([cardId, podcast, connected, yotoStatus]) => {
+    if (!shouldLoadTrackIconPreviews({
+      cardId,
+      isPodcast: podcast,
+      yotoConnected: connected,
+      yotoStatus,
+      libraryStatus: iconPreviewStatus.value,
+    })) return
+    void loadIconPreviews()
+  },
+  { immediate: true },
+)
 
 const saveProgressTestMode = useSaveProgressTestMode()
 
@@ -337,8 +441,11 @@ watch(() => props.scrollToVideoId, async (id) => {
           :key="track.id"
           :track="track"
           :index="index"
-          :locked="isDropzoneLocked"
+          :locked="isDropzoneLocked || isCardLoadingActive || isYotoPlaylistBlocked"
+          :icon-enabled="showTrackIconControl(track)"
+          :effective-icon="displayedEffectiveTrackIcon(track)"
           @remove="removeTrack"
+          @choose-icon="openTrackIconPicker"
         />
       </TransitionGroup>
 
@@ -396,5 +503,13 @@ watch(() => props.scrollToVideoId, async (id) => {
         variant="overlay"
       />
     </div>
+
+    <IconLibraryModal
+      v-model:open="iconPickerOpen"
+      selection-mode
+      :selected-media-id="selectedTrackMediaId"
+      @select="chooseTrackIcon"
+      @inherit="useChapterIcon"
+    />
   </div>
 </template>

@@ -19,6 +19,16 @@ import {
 } from '#shared/myo-editor/standalonePlaylist'
 import type { SaveJobPhase } from '#shared/myo-editor/types'
 import {
+  effectiveTrackIcon,
+  resetTrackIconAssignments,
+  stageTrackIconAssignment,
+  STRUCTURAL_ICON_MIX_MESSAGE,
+  toTrackIconMutations,
+  type EffectiveTrackIcon,
+  type StagedTrackIconAssignment,
+  type TrackIconSelection,
+} from '#shared/myo-editor/trackIconAssignment'
+import {
   classifyExistingCardChanges,
   getCardTitleValidationError,
   resetCardTitle,
@@ -75,7 +85,12 @@ export interface MyoEditorContext {
   createOutcomeUncertain: Ref<boolean>
   titleDirty: ComputedRef<boolean>
   playlistDirty: ComputedRef<boolean>
+  iconDirty: ComputedRef<boolean>
+  hasStructuralIconConflict: ComputedRef<boolean>
   isDirty: ComputedRef<boolean>
+  trackIconAssignments: Ref<StagedTrackIconAssignment[]>
+  stageTrackIcon: (track: PlaylistTrack, selection: TrackIconSelection) => void
+  getEffectiveTrackIcon: (track: PlaylistTrack) => EffectiveTrackIcon
   isCardSaving: (cardId: string) => boolean
   startNewPlaylist: () => boolean
   selectCard: (card: YotoMyoCard) => Promise<void>
@@ -162,12 +177,13 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const cardRevision = ref('')
   const playlist = ref<PlaylistTrack[]>([])
   const baselinePlaylist = ref<PlaylistTrack[]>([])
+  const trackIconAssignments = ref<StagedTrackIconAssignment[]>([])
   const originalCardDetail = ref<YotoCardDetail | null>(null)
   const isPodcast = ref(false)
   const loading = ref(false)
   const errorMessage = ref('')
   const createOutcomeUncertain = ref(false)
-  const titleMutationCardId = ref<string | null>(null)
+  const cardMutationCardId = ref<string | null>(null)
   const activeSaves = ref(new Map<string, CardSaveState>())
 
   function touchActiveSaves() {
@@ -196,7 +212,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function isCardSaving(cardId: string): boolean {
-    return titleMutationCardId.value === cardId || isSaveActive(cardId)
+    return cardMutationCardId.value === cardId || isSaveActive(cardId)
   }
 
   const isEditing = computed(() =>
@@ -207,11 +223,17 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     () => playlistSnapshot(playlist.value) !== playlistSnapshot(baselinePlaylist.value),
   )
 
+  const iconDirty = computed(() => trackIconAssignments.value.length > 0)
+  const hasStructuralIconConflict = computed(
+    () => playlistDirty.value && iconDirty.value,
+  )
+
   const existingCardChanges = computed(() =>
     classifyExistingCardChanges(
       cardTitle.value,
       baselineCardTitle.value,
       playlistDirty.value,
+      iconDirty.value,
     ),
   )
 
@@ -240,19 +262,19 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     return Boolean(state && !isTerminalStatus(state.status))
   })
 
-  const titleMutationActive = computed(
-    () => titleMutationCardId.value !== null
-      && titleMutationCardId.value === selectedCardId.value,
+  const cardMutationActive = computed(
+    () => cardMutationCardId.value !== null
+      && cardMutationCardId.value === selectedCardId.value,
   )
 
   const isPlaylistLocked = computed(
-    () => titleMutationActive.value || backgroundSaveActive.value,
+    () => cardMutationActive.value || backgroundSaveActive.value,
   )
 
   const isNavigationLocked = computed(() =>
     shouldBlockEditorNavigation(isNewPlaylist.value, {
       backgroundSaveActive: backgroundSaveActive.value,
-      titleMutationActive: titleMutationActive.value,
+      cardMutationActive: cardMutationActive.value,
     }),
   )
 
@@ -271,6 +293,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = restored.cardTitle
     baselineCardTitle.value = restored.baselineCardTitle
     cardRevision.value = restored.cardRevision
+    trackIconAssignments.value = resetTrackIconAssignments()
   }
 
   async function reloadCardFromApi(cardId: string, titleFallback?: string) {
@@ -283,6 +306,26 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = titleFallback || detail.title
     baselineCardTitle.value = cardTitle.value
     cardRevision.value = detail.revision
+    trackIconAssignments.value = resetTrackIconAssignments()
+  }
+
+  function stageTrackIcon(track: PlaylistTrack, selection: TrackIconSelection) {
+    if (
+      isNewPlaylist.value
+      || isPodcast.value
+      || loading.value
+      || isPlaylistLocked.value
+    ) return
+    trackIconAssignments.value = stageTrackIconAssignment(
+      trackIconAssignments.value,
+      track,
+      selection,
+    )
+    errorMessage.value = ''
+  }
+
+  function getEffectiveTrackIcon(track: PlaylistTrack): EffectiveTrackIcon {
+    return effectiveTrackIcon(track, trackIconAssignments.value)
   }
 
   async function finalizeSaveSuccess(cardId: string, titleFallback?: string) {
@@ -583,7 +626,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     if (isEditing.value && isDirty.value && !currentCardSaving) {
       const confirmed = window.confirm(
-        'You have unsaved playlist changes. Switch cards anyway?',
+        'You have unsaved card changes. Switch cards anyway?',
       )
       if (!confirmed) return
     }
@@ -617,6 +660,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         isPodcast.value = false
         playlist.value = []
         baselinePlaylist.value = []
+        trackIconAssignments.value = resetTrackIconAssignments()
         baselineCardTitle.value = ''
         cardRevision.value = ''
         originalCardDetail.value = null
@@ -636,6 +680,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       isPodcast.value = false
       playlist.value = []
       baselinePlaylist.value = []
+      trackIconAssignments.value = resetTrackIconAssignments()
       baselineCardTitle.value = ''
       cardRevision.value = ''
       originalCardDetail.value = null
@@ -652,7 +697,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     const currentCardSaving = currentSaveKey ? isSaveActive(currentSaveKey) : false
     if (isEditing.value && isDirty.value && !currentCardSaving) {
       const confirmed = window.confirm(
-        'You have unsaved playlist changes. Start a new playlist anyway?',
+        'You have unsaved card changes. Start a new playlist anyway?',
       )
       if (!confirmed) return false
     }
@@ -665,6 +710,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     isPodcast.value = false
     playlist.value = []
     baselinePlaylist.value = []
+    trackIconAssignments.value = resetTrackIconAssignments()
     originalCardDetail.value = null
     errorMessage.value = ''
     createOutcomeUncertain.value = false
@@ -679,7 +725,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     if (!force && isDirty.value && !currentCardSaving) {
       const confirmed = window.confirm(
-        'You have unsaved playlist changes. Clear selection anyway?',
+        'You have unsaved card changes. Clear selection anyway?',
       )
       if (!confirmed) return false
     }
@@ -692,6 +738,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     isPodcast.value = false
     playlist.value = []
     baselinePlaylist.value = []
+    trackIconAssignments.value = resetTrackIconAssignments()
     originalCardDetail.value = null
     errorMessage.value = ''
     createOutcomeUncertain.value = false
@@ -701,6 +748,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   function resetChanges() {
     if (!isDirty.value || isPlaylistLocked.value) return
     playlist.value = clonePlaylist(baselinePlaylist.value)
+    trackIconAssignments.value = resetTrackIconAssignments()
     cardTitle.value = resetCardTitle(isNewPlaylist.value, baselineCardTitle.value)
     errorMessage.value = ''
     if (isNewPlaylist.value) createOutcomeUncertain.value = false
@@ -804,24 +852,36 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       return
     }
 
-    if (existingCardChanges.value.titleOnly) {
+    if (hasStructuralIconConflict.value) {
+      errorMessage.value = STRUCTURAL_ICON_MIX_MESSAGE
+      playEvent('saveError')
+      return
+    }
+
+    if (existingCardChanges.value.rawMutationOnly) {
       if (!cardRevision.value) {
-        errorMessage.value = 'Reload this card before renaming it.'
+        errorMessage.value = 'Reload this card before updating its title or track icons.'
         playEvent('saveError')
         return
       }
 
-      const request: MutateCardRequest = {
-        expectedRevision: cardRevision.value,
-        mutations: [{
+      const mutations: MutateCardRequest['mutations'] = []
+      if (titleDirty.value) {
+        mutations.push({
           kind: 'rename-card',
           expectedTitle: baselineCardTitle.value,
           title: cardTitle.value.trim(),
-        }],
+        })
+      }
+      mutations.push(...toTrackIconMutations(trackIconAssignments.value))
+
+      const request: MutateCardRequest = {
+        expectedRevision: cardRevision.value,
+        mutations,
       }
 
       errorMessage.value = ''
-      titleMutationCardId.value = cardId
+      cardMutationCardId.value = cardId
       try {
         await $fetch(`/api/yoto/content/${cardId}/mutate`, {
           method: 'POST',
@@ -840,11 +900,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         errorMessage.value = e.data?.statusMessage
           ?? e.statusMessage
           ?? e.message
-          ?? 'Failed to rename card'
+          ?? 'Failed to update card title or track icons'
         playEvent('saveError')
       }
       finally {
-        titleMutationCardId.value = null
+        cardMutationCardId.value = null
       }
       return
     }
@@ -889,11 +949,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
   onMounted(() => {
     stopBeforeUnloadWatch = watch(
-      [isDirty, backgroundSaveActive, titleMutationActive],
+      [isDirty, backgroundSaveActive, cardMutationActive],
       ([dirty, saveActive, mutationActive]) => {
         const shouldAttach = shouldWarnBeforeUnload(dirty, {
           backgroundSaveActive: saveActive,
-          titleMutationActive: mutationActive,
+          cardMutationActive: mutationActive,
         })
         if (shouldAttach === beforeUnloadAttached) return
 
@@ -931,7 +991,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     createOutcomeUncertain,
     titleDirty,
     playlistDirty,
+    iconDirty,
+    hasStructuralIconConflict,
     isDirty,
+    trackIconAssignments,
+    stageTrackIcon,
+    getEffectiveTrackIcon,
     isCardSaving,
     startNewPlaylist,
     selectCard,

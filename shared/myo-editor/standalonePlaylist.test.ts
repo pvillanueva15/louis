@@ -171,62 +171,62 @@ describe('standalone playlist drafts', () => {
     assert.equal(
       shouldBlockEditorNavigation(false, {
         backgroundSaveActive: false,
-        titleMutationActive: false,
+        cardMutationActive: false,
       }),
       false,
     )
     assert.equal(
       shouldBlockEditorNavigation(false, {
         backgroundSaveActive: true,
-        titleMutationActive: false,
+        cardMutationActive: false,
       }),
       false,
     )
     assert.equal(
       shouldBlockEditorNavigation(true, {
         backgroundSaveActive: true,
-        titleMutationActive: false,
+        cardMutationActive: false,
       }),
       true,
     )
     assert.equal(
       shouldBlockEditorNavigation(false, {
         backgroundSaveActive: false,
-        titleMutationActive: true,
+        cardMutationActive: true,
       }),
       true,
     )
   })
 
-  it('retains unload protection throughout a foreground title mutation', () => {
-    const beforeRename = {
+  it('retains unload protection throughout a foreground card mutation', () => {
+    const beforeMutation = {
       backgroundSaveActive: false,
-      titleMutationActive: false,
+      cardMutationActive: false,
     }
-    const duringRename = {
+    const duringMutation = {
       backgroundSaveActive: false,
-      titleMutationActive: true,
+      cardMutationActive: true,
     }
 
-    assert.equal(shouldWarnBeforeUnload(true, beforeRename), true)
-    assert.equal(shouldWarnBeforeUnload(true, duringRename), true)
+    assert.equal(shouldWarnBeforeUnload(true, beforeMutation), true)
+    assert.equal(shouldWarnBeforeUnload(true, duringMutation), true)
   })
 
-  it('updates unload protection after title mutation success or failure', () => {
-    const renameFinished = {
+  it('updates unload protection after card mutation success or failure', () => {
+    const mutationFinished = {
       backgroundSaveActive: false,
-      titleMutationActive: false,
+      cardMutationActive: false,
     }
 
-    assert.equal(shouldWarnBeforeUnload(false, renameFinished), false)
-    assert.equal(shouldWarnBeforeUnload(true, renameFinished), true)
+    assert.equal(shouldWarnBeforeUnload(false, mutationFinished), false)
+    assert.equal(shouldWarnBeforeUnload(true, mutationFinished), true)
   })
 
   it('suppresses unload protection for resumable background saves', () => {
     assert.equal(
       shouldWarnBeforeUnload(true, {
         backgroundSaveActive: true,
-        titleMutationActive: false,
+        cardMutationActive: false,
       }),
       false,
     )

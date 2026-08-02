@@ -10,6 +10,8 @@ import {
   type CardMutationDependencies,
 } from './yoto-card-mutation.ts'
 
+const MEDIA_ID = 'a'.repeat(43)
+
 function requestFor(rawCard: RawYotoCard, expectedTitle = 'Old title'): MutateCardRequest {
   return {
     expectedRevision: deriveRawCardRevision(rawCard),
@@ -18,6 +20,25 @@ function requestFor(rawCard: RawYotoCard, expectedTitle = 'Old title'): MutateCa
       expectedTitle,
       title: 'New title',
     }],
+  }
+}
+
+function iconRequestFor(
+  rawCard: RawYotoCard,
+  overrides: Record<string, unknown> = {},
+): MutateCardRequest {
+  return {
+    expectedRevision: deriveRawCardRevision(rawCard),
+    mutations: [{
+      kind: 'set-track-icon',
+      chapterKey: 'chapter-1',
+      trackKey: 'track-1',
+      expectedChapterIcon: { kind: 'absent' },
+      expectedTrackIcon: { kind: 'absent' },
+      mode: 'icon',
+      mediaId: MEDIA_ID,
+      ...overrides,
+    } as MutateCardRequest['mutations'][number]],
   }
 }
 
@@ -37,12 +58,14 @@ function card(overrides: RawYotoCard = {}): RawYotoCard {
         }],
         unknownChapterField: 'keep',
       }],
+      grouping: { nested: ['keep'] },
       unknownContentField: 'keep',
     },
     metadata: {
       title: 'Old title',
       note: 'keep',
       cover: { imageL: 'keep' },
+      media: { uploadedMedia: { keep: true } },
       unknownMetadataField: 'keep',
     },
     display: { icon16x16: 'yoto:#keep' },
@@ -224,5 +247,109 @@ describe('Yoto card mutation service', () => {
       )
       assert.deepEqual(calls.map(call => call.kind), ['get'])
     }
+  })
+
+  it('performs exactly one raw GET and POST for an icon save without media operations', async () => {
+    const rawCard = card()
+    const { calls, dependencies } = recordingDependencies(rawCard)
+
+    const result = await mutateYotoCard(
+      'card-1',
+      iconRequestFor(rawCard),
+      'access-token',
+      dependencies,
+    )
+
+    assert.deepEqual(result, { cardId: 'card-1', title: 'Old title' })
+    assert.deepEqual(calls.map(call => call.kind), ['get', 'post'])
+    const posted = calls[1]!.card!
+    const content = posted.content as { chapters: Array<{
+      display?: { icon16x16?: string }
+      tracks: Array<{
+        display?: { icon16x16?: string }
+        unknownTrackField?: unknown
+      }>
+    }> }
+    assert.equal(content.chapters[0]!.display!.icon16x16, `yoto:#${MEDIA_ID}`)
+    assert.equal(content.chapters[0]!.tracks[0]!.display!.icon16x16, `yoto:#${MEDIA_ID}`)
+    assert.deepEqual((posted.content as Record<string, unknown>).grouping, {
+      nested: ['keep'],
+    })
+    assert.deepEqual(posted.metadata, rawCard.metadata)
+    assert.deepEqual(posted.stream, rawCard.stream)
+    assert.deepEqual(posted.unknownTopLevelField, rawCard.unknownTopLevelField)
+    assert.equal(content.chapters[0]!.tracks[0]!.unknownTrackField, 'keep')
+    assert.equal(calls.length, 2)
+  })
+
+  it('saves a title and icon batch through one preserved raw document POST', async () => {
+    const rawCard = card()
+    const { calls, dependencies } = recordingDependencies(rawCard)
+    const request = iconRequestFor(rawCard)
+    request.mutations.unshift({
+      kind: 'rename-card',
+      expectedTitle: 'Old title',
+      title: 'New title',
+    })
+
+    const result = await mutateYotoCard('card-1', request, 'access-token', dependencies)
+
+    assert.deepEqual(result, { cardId: 'card-1', title: 'New title' })
+    assert.deepEqual(calls.map(call => call.kind), ['get', 'post'])
+    assert.equal(calls[1]!.card!.title, 'New title')
+    assert.deepEqual(calls[1]!.card!.unknownTopLevelField, rawCard.unknownTopLevelField)
+  })
+
+  it('rejects stale icon state, podcasts, and wrong identity before POST', async () => {
+    const staleCard = card({
+      content: {
+        chapters: [{
+          key: 'chapter-1',
+          tracks: [{
+            key: 'track-1',
+            display: { icon16x16: 'yoto:#changed' },
+          }],
+        }],
+      },
+    })
+    const stale = recordingDependencies(staleCard)
+    await assert.rejects(
+      mutateYotoCard(
+        'card-1',
+        iconRequestFor(staleCard),
+        'access-token',
+        stale.dependencies,
+      ),
+      error => (error as { kind?: string }).kind === 'conflict',
+    )
+    assert.deepEqual(stale.calls.map(call => call.kind), ['get'])
+
+    const podcastCard = card({
+      metadata: { title: 'Old title', feedUrl: 'https://example.com/feed.xml' },
+    })
+    const podcast = recordingDependencies(podcastCard)
+    await assert.rejects(
+      mutateYotoCard(
+        'card-1',
+        iconRequestFor(podcastCard),
+        'access-token',
+        podcast.dependencies,
+      ),
+      /Podcast cards/,
+    )
+    assert.deepEqual(podcast.calls.map(call => call.kind), ['get'])
+
+    const wrongCard = card({ cardId: 'card-2' })
+    const wrong = recordingDependencies(wrongCard)
+    await assert.rejects(
+      mutateYotoCard(
+        'card-1',
+        iconRequestFor(wrongCard),
+        'access-token',
+        wrong.dependencies,
+      ),
+      /wrong card identity/,
+    )
+    assert.deepEqual(wrong.calls.map(call => call.kind), ['get'])
   })
 })

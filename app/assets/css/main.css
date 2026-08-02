@@ -1359,6 +1359,67 @@ body {
   cursor: not-allowed;
 }
 
+.playlist-track-icon {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 3.4rem;
+  min-height: 2.6rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  padding: 0.2rem;
+  border: 3px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-blue-lighter);
+  box-shadow: 2px 2px 0 var(--color-maru-black);
+  color: var(--color-maru-black);
+  cursor: pointer;
+}
+
+.playlist-track-icon img {
+  width: 1.25rem;
+  height: 1.25rem;
+  image-rendering: pixelated;
+}
+
+.playlist-track-icon > span {
+  font-size: 1.1rem;
+  line-height: 0.8;
+}
+
+.playlist-track-icon small {
+  font-family: var(--font-maru-mono);
+  font-size: 0.7rem;
+  line-height: 0.8;
+}
+
+.playlist-track-icon:hover:not(:disabled) {
+  background: var(--color-maru-yellow-light);
+}
+
+.playlist-track-icon:focus-visible {
+  outline: 3px solid var(--color-maru-blue);
+  outline-offset: 2px;
+}
+
+.playlist-track-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 420px) {
+  .playlist-track-icon {
+    width: 36px;
+    min-height: 36px;
+  }
+
+  .playlist-track-icon small {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .playlist-remove {
     transition: background-color 0.15s ease-out;
@@ -3354,6 +3415,51 @@ body {
   list-style: none;
 }
 
+.icon-library__inherit-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.8rem;
+  border: 3px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-yellow-light);
+  box-shadow: 3px 3px 0 var(--color-maru-black);
+  color: var(--color-maru-black);
+  text-align: left;
+  cursor: pointer;
+}
+
+.icon-library__inherit-mark {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 3px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-white);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.icon-library__inherit-button strong,
+.icon-library__inherit-button small {
+  display: block;
+}
+
+.icon-library__inherit-button strong {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.icon-library__inherit-button small {
+  margin-top: 0.15rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .icon-library__item {
   position: relative;
   display: grid;
@@ -3371,6 +3477,22 @@ body {
   background: var(--color-maru-green-lighter);
   outline: 3px solid var(--color-maru-white);
   outline-offset: -6px;
+}
+
+.icon-library__item--selected {
+  outline: 4px solid var(--color-maru-blue);
+  outline-offset: 2px;
+}
+
+.icon-library__pick {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .icon-library__icon-stage {

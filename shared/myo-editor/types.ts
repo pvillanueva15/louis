@@ -1,3 +1,5 @@
+import type { RawIconState } from '../yoto/cardMutation.ts'
+
 export type TrackSource =
   | 'app-youtube'
   | 'youtube-url'
@@ -25,6 +27,9 @@ export type YotoTrackReuseSnapshot = Omit<YotoTrackPayload, 'key' | 'title' | 'o
 export interface YotoTrackDetail extends YotoTrackPayload {
   chapterKey: string
   trackKey: string
+  rawIconState: RawIconState
+  chapterRawIconState: RawIconState
+  chapterTrackCount: number
   /** Parent chapter icon when flattened from card detail */
   chapterDisplay?: { icon16x16: string | null }
 }
@@ -32,6 +37,7 @@ export interface YotoTrackDetail extends YotoTrackPayload {
 export interface YotoChapterDetail {
   key: string
   title: string
+  rawIconState: RawIconState
   display?: { icon16x16: string | null }
   tracks: YotoTrackDetail[]
 }
@@ -78,6 +84,9 @@ export interface PlaylistTrack {
   youtubeId?: string
   chapterKey?: string
   trackKey?: string
+  rawIconState?: RawIconState
+  chapterRawIconState?: RawIconState
+  chapterTrackCount?: number
   duration?: number
   /** Parent chapter icon from the loaded card (preserved on save). */
   chapterDisplay?: { icon16x16: string | null }

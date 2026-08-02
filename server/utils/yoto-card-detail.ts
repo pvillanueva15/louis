@@ -1,5 +1,6 @@
 import type { YotoCardDetail, YotoTrackDetail } from '#shared/myo-editor/types'
 import type { YotoCardMetadata } from '#shared/myo-editor/types'
+import { mapRawIconState } from '#shared/yoto/cardMutation'
 import {
   fetchRawYotoCard,
 } from './yoto-card-raw'
@@ -45,10 +46,18 @@ function mapChannels(channels: string | number | undefined): 'stereo' | 'mono' |
   return undefined
 }
 
-function mapTrack(chapterKey: string, track: YotoApiTrack): YotoTrackDetail {
+function mapTrack(
+  chapterKey: string,
+  chapterDisplay: YotoApiChapter['display'],
+  chapterTrackCount: number,
+  track: YotoApiTrack,
+): YotoTrackDetail {
   return {
     chapterKey,
     trackKey: track.key,
+    rawIconState: mapRawIconState(track.display),
+    chapterRawIconState: mapRawIconState(chapterDisplay),
+    chapterTrackCount,
     key: track.key,
     title: track.title,
     trackUrl: track.trackUrl,
@@ -67,14 +76,23 @@ export function mapYotoCardDetail(
   data: YotoApiCardDetail,
   revision: string,
 ): YotoCardDetail {
-  const chapters = (data.content?.chapters ?? []).map(chapter => ({
-    key: chapter.key,
-    title: chapter.title,
-    display: chapter.display
-      ? { icon16x16: chapter.display.icon16x16 ?? null }
-      : undefined,
-    tracks: (chapter.tracks ?? []).map(track => mapTrack(chapter.key, track)),
-  }))
+  const chapters = (data.content?.chapters ?? []).map((chapter) => {
+    const tracks = chapter.tracks ?? []
+    return {
+      key: chapter.key,
+      title: chapter.title,
+      rawIconState: mapRawIconState(chapter.display),
+      display: chapter.display
+        ? { icon16x16: chapter.display.icon16x16 ?? null }
+        : undefined,
+      tracks: tracks.map(track => mapTrack(
+        chapter.key,
+        chapter.display,
+        tracks.length,
+        track,
+      )),
+    }
+  })
 
   const metadata = data.metadata ?? null
 

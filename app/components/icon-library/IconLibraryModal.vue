@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import IconStaticEditor from './IconStaticEditor.vue'
 import { useIconLibrary } from './useIconLibrary'
+import type { PersonalIcon } from '#shared/yoto/iconContract'
+
+const props = withDefaults(defineProps<{
+  selectionMode?: boolean
+  selectedMediaId?: string | null
+}>(), {
+  selectionMode: false,
+  selectedMediaId: null,
+})
+
+const emit = defineEmits<{
+  select: [icon: PersonalIcon]
+  inherit: []
+}>()
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -53,6 +67,18 @@ async function retryLoad() {
 function close() {
   if (uploadBusy.value) return
   open.value = false
+}
+
+function chooseIcon(icon: PersonalIcon) {
+  if (!props.selectionMode || uploadBusy.value) return
+  emit('select', icon)
+  close()
+}
+
+function useChapterIcon() {
+  if (!props.selectionMode || uploadBusy.value) return
+  emit('inherit')
+  close()
 }
 
 function focusableElements(): HTMLElement[] {
@@ -128,14 +154,16 @@ watch(open, async (isOpen) => {
         <header class="icon-library__header border-maru-bottom">
           <div>
             <p class="icon-library__kicker font-maru-bold">Your Yoto account</p>
-            <h2 :id="headingId" class="icon-library__title font-maru-bold">My Icons</h2>
+            <h2 :id="headingId" class="icon-library__title font-maru-bold">
+              {{ selectionMode ? 'Choose track icon' : 'My Icons' }}
+            </h2>
           </div>
           <button
             ref="closeButton"
             type="button"
             class="icon-library__close"
             :disabled="uploadBusy"
-            aria-label="Close My Icons"
+            :aria-label="selectionMode ? 'Close track icon chooser' : 'Close My Icons'"
             @click="close"
           >
             Close
@@ -152,6 +180,20 @@ watch(open, async (isOpen) => {
           />
 
           <template v-else>
+            <button
+              v-if="selectionMode"
+              type="button"
+              class="icon-library__inherit-button"
+              :disabled="uploadBusy"
+              @click="useChapterIcon"
+            >
+              <span class="icon-library__inherit-mark" aria-hidden="true">↳</span>
+              <span>
+                <strong>Use chapter icon</strong>
+                <small>Remove this track’s explicit override.</small>
+              </span>
+            </button>
+
             <div class="icon-library__intro">
               <div>
                 <h3 class="icon-library__section-title font-maru-bold">Reusable icons</h3>
@@ -194,9 +236,25 @@ watch(open, async (isOpen) => {
                 v-for="(icon, index) in icons"
                 :key="icon.displayIconId"
                 class="icon-library__item"
-                :class="{ 'icon-library__item--newest': icon.mediaId === newestMediaId }"
+                :class="{
+                  'icon-library__item--newest': icon.mediaId === newestMediaId,
+                  'icon-library__item--selected': selectionMode && icon.mediaId === selectedMediaId,
+                }"
               >
-                <div class="icon-library__icon-stage icon-library__checkerboard">
+                <button
+                  v-if="selectionMode"
+                  type="button"
+                  class="icon-library__pick"
+                  :aria-label="`Use personal icon ${index + 1}`"
+                  :aria-pressed="icon.mediaId === selectedMediaId"
+                  @click="chooseIcon(icon)"
+                >
+                  <span class="icon-library__icon-stage icon-library__checkerboard">
+                    <img v-if="icon.url" :src="icon.url" alt="" loading="lazy">
+                    <span v-else class="icon-library__missing-preview" aria-hidden="true">?</span>
+                  </span>
+                </button>
+                <div v-else class="icon-library__icon-stage icon-library__checkerboard">
                   <img v-if="icon.url" :src="icon.url" :alt="`Personal icon ${index + 1}`" loading="lazy">
                   <span v-else class="icon-library__missing-preview" aria-label="Preview unavailable">?</span>
                 </div>

@@ -1,5 +1,5 @@
 import {
-  applyRenameCardMutation,
+  applyCardMutations,
   CardMutationError,
   type MutateCardRequest,
 } from '../../shared/yoto/cardMutation.ts'
@@ -38,8 +38,8 @@ export async function mutateYotoCard(
     throw new CardMutationError('conflict', 'The card changed after it was loaded.')
   }
 
-  const renamed = applyRenameCardMutation(rawCard, request.mutations[0])
-  await dependencies.postCard(accessToken, renamed)
+  const mutated = applyCardMutations(rawCard, request.mutations)
+  await dependencies.postCard(accessToken, mutated)
 
-  return { cardId, title: request.mutations[0].title }
+  return { cardId, title: mutated.title as string }
 }
