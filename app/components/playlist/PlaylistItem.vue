@@ -1,17 +1,28 @@
 <script setup lang="ts">
 import { useSortable } from '@dnd-kit/vue/sortable'
 import type { PlaylistTrack } from '~/components/playlist/types'
+import type { EffectiveTrackIcon } from '#shared/myo-editor/trackIconAssignment'
 import { playlistDragId, type PlaylistDragData } from './dnd'
 
 const props = defineProps<{
   track: PlaylistTrack
   index: number
   locked?: boolean
+  iconEnabled?: boolean
+  effectiveIcon?: EffectiveTrackIcon
 }>()
 
 const emit = defineEmits<{
   remove: [id: string]
+  chooseIcon: [track: PlaylistTrack]
 }>()
+
+const iconLabel = computed(() => {
+  if (!props.effectiveIcon?.reference) return 'No track icon. Choose an icon.'
+  return props.effectiveIcon.source === 'chapter'
+    ? 'Using chapter icon. Choose a track icon.'
+    : 'Using a track icon. Change track icon.'
+})
 
 const { playEvent } = useUiSound()
 
@@ -70,6 +81,24 @@ const { isDragging, isDropTarget } = useSortable({
       <p class="font-maru-bold text-xl sm:text-2xl line-clamp-2 text-pretty leading-[0.85]">{{ track.title }}</p>
       <p class="font-maru-mono font-maru-regular text-[1.25rem] text-maru-black/75 leading-none">{{ track.subtitle }}</p>
     </div>
+
+    <button
+      v-if="iconEnabled"
+      type="button"
+      class="playlist-track-icon"
+      :disabled="locked"
+      :aria-label="`${track.title}: ${iconLabel}`"
+      :title="iconLabel"
+      @click="emit('chooseIcon', track)"
+    >
+      <img
+        v-if="effectiveIcon?.previewUrl"
+        :src="effectiveIcon.previewUrl"
+        alt=""
+      >
+      <span v-else aria-hidden="true">{{ effectiveIcon?.reference ? '✦' : '+' }}</span>
+      <small>{{ effectiveIcon?.source === 'chapter' ? 'Chapter' : 'Icon' }}</small>
+    </button>
 
     <button
       type="button"

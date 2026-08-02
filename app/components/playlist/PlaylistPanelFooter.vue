@@ -11,6 +11,7 @@ import {
   UNCERTAIN_CREATE_START_MESSAGE,
 } from '#shared/myo-editor/standalonePlaylist'
 import { getCardTitleValidationError } from '#shared/yoto/cardMutation'
+import { STRUCTURAL_ICON_MIX_MESSAGE } from '#shared/myo-editor/trackIconAssignment'
 
 const editor = inject(MYO_EDITOR_KEY, null)
 const { playEvent } = useUiSound()
@@ -28,6 +29,7 @@ const errorMessage = editor?.errorMessage
 const createOutcomeUncertain = editor?.createOutcomeUncertain
 const playlist = editor?.playlist
 const playlistDirty = editor?.playlistDirty
+const hasStructuralIconConflict = editor?.hasStructuralIconConflict
 
 const showCapacityConfirm = ref(false)
 
@@ -59,6 +61,7 @@ const updateTitleValidationError = computed(() =>
 
 const footerHint = computed(() => {
   if (isPodcast?.value) return 'Podcast cards cannot be edited yet.'
+  if (hasStructuralIconConflict?.value) return STRUCTURAL_ICON_MIX_MESSAGE
   if (createOutcomeUncertain?.value) {
     return errorMessage?.value || UNCERTAIN_CREATE_START_MESSAGE
   }
@@ -74,7 +77,8 @@ const canSave = computed(() => {
     !loading?.value
     && !isPlaylistLocked?.value
     && !saveProgressTestMode.value
-    && !isPodcast?.value,
+    && !isPodcast?.value
+    && !hasStructuralIconConflict?.value,
   )
   if (!ready) return false
   if (isNewPlaylist?.value) {

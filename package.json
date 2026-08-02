@@ -12,7 +12,7 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "start": "node .output/server/index.mjs",
-    "test": "node --experimental-strip-types --test shared/**/*.test.ts server/**/*.test.ts",
+    "test": "node --experimental-strip-types --test app/components/icon-library/useIconLibrary.test.ts shared/**/*.test.ts server/**/*.test.ts",
     "postinstall": "nuxt prepare",
     "release": "release-it"
   },

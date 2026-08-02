@@ -164,14 +164,14 @@ export function classifyCreateStartFailure(error: unknown): {
 
 export interface EditorOperationLocks {
   backgroundSaveActive: boolean
-  titleMutationActive: boolean
+  cardMutationActive: boolean
 }
 
 export function shouldBlockEditorNavigation(
   isNewPlaylist: boolean,
   locks: EditorOperationLocks,
 ): boolean {
-  return locks.titleMutationActive
+  return locks.cardMutationActive
     || (isNewPlaylist && locks.backgroundSaveActive)
 }
 

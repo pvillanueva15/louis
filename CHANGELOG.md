@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Lossless per-track icon assignment for existing MYO cards, including personal-library selection, chapter inheritance, batching, and Reset support.
 - Personal Yoto icon browsing and a local 16×16 crop/preview editor with reusable icon uploads.
 - Existing Yoto playlists and MYO cards can now be renamed directly in the editor.
 - Standalone Yoto playlist creation from local drafts with reviewed YouTube tracks and explicit Create confirmation.
