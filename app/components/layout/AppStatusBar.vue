@@ -2,6 +2,7 @@
 import { YOTO_MYO_KEY } from '~/components/yoto-myo/keys'
 import HowToModal from '~/components/layout/HowToModal.vue'
 import UserPreferencesModal from '~/components/layout/UserPreferencesModal.vue'
+import IconLibraryModal from '~/components/icon-library/IconLibraryModal.vue'
 
 const yoto = inject(YOTO_MYO_KEY)
 if (!yoto) {
@@ -14,6 +15,7 @@ const { connected, status, refresh, disconnect, hasWriteScope, connect, errorMes
 
 const prefsOpen = ref(false)
 const howToOpen = ref(false)
+const iconsOpen = ref(false)
 
 const needsReconnect = computed(
   () => connected.value && !hasWriteScope.value,
@@ -45,6 +47,11 @@ function openHowTo() {
 function openPreferences() {
   playEvent('buttonClick')
   prefsOpen.value = true
+}
+
+function openIcons() {
+  playEvent('buttonClick')
+  iconsOpen.value = true
 }
 
 function onConnect() {
@@ -113,6 +120,15 @@ function onRetry() {
       </button>
 
       <button
+        v-if="connected && status === 'idle'"
+        type="button"
+        class="status-bar__action status-bar__action--emphasis"
+        @click="openIcons"
+      >
+        My Icons
+      </button>
+
+      <button
         v-if="status === 'disconnected' || status === 'unconfigured'"
         type="button"
         class="status-bar__action status-bar__action--emphasis"
@@ -151,5 +167,6 @@ function onRetry() {
 
     <HowToModal v-model:open="howToOpen" />
     <UserPreferencesModal v-model:open="prefsOpen" />
+    <IconLibraryModal v-model:open="iconsOpen" />
   </div>
 </template>

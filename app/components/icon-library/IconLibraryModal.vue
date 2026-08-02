@@ -1,0 +1,215 @@
+<script setup lang="ts">
+import IconStaticEditor from './IconStaticEditor.vue'
+import { useIconLibrary } from './useIconLibrary'
+
+const open = defineModel<boolean>('open', { default: false })
+
+const {
+  icons,
+  status,
+  uploadStatus,
+  errorMessage,
+  announcement,
+  newestMediaId,
+  recoveryRequired,
+  load,
+  upload,
+  resetSessionMessage,
+} = useIconLibrary()
+
+const dialog = ref<HTMLElement | null>(null)
+const closeButton = ref<HTMLButtonElement | null>(null)
+const makeIconButton = ref<HTMLButtonElement | null>(null)
+const retryButton = ref<HTMLButtonElement | null>(null)
+const editor = ref<{ focusInitial: () => void } | null>(null)
+const editing = ref(false)
+const headingId = 'icon-library-heading'
+let restoreFocusTo: HTMLElement | null = null
+
+const uploadBusy = computed(() => uploadStatus.value === 'uploading')
+const uploadBlocked = computed(() => uploadBusy.value || recoveryRequired.value)
+
+async function showEditor() {
+  if (uploadBlocked.value) return
+  editing.value = true
+  await nextTick()
+  editor.value?.focusInitial()
+}
+
+async function showLibrary() {
+  editing.value = false
+  await nextTick()
+  makeIconButton.value?.focus()
+}
+
+async function retryLoad() {
+  closeButton.value?.focus()
+  const loaded = await load()
+  await nextTick()
+  if (loaded) makeIconButton.value?.focus()
+  else retryButton.value?.focus()
+}
+
+function close() {
+  if (uploadBusy.value) return
+  open.value = false
+}
+
+function focusableElements(): HTMLElement[] {
+  if (!dialog.value) return []
+  return Array.from(dialog.value.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )).filter(element => !element.hasAttribute('hidden'))
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    close()
+    return
+  }
+  if (event.key !== 'Tab') return
+
+  const focusable = focusableElements()
+  if (focusable.length === 0) return
+  const first = focusable[0]!
+  const last = focusable.at(-1)!
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  }
+  else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+async function onUpload(blob: Blob, filename: string) {
+  const succeeded = await upload(blob, filename)
+  if (!succeeded && !recoveryRequired.value) return
+  editing.value = false
+  await nextTick()
+  if (recoveryRequired.value) retryButton.value?.focus()
+  else makeIconButton.value?.focus()
+}
+
+watch(open, async (isOpen) => {
+  if (isOpen) {
+    restoreFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    editing.value = false
+    resetSessionMessage()
+    await nextTick()
+    closeButton.value?.focus()
+    await load()
+    return
+  }
+
+  editing.value = false
+  await nextTick()
+  restoreFocusTo?.focus()
+  restoreFocusTo = null
+})
+</script>
+
+<template>
+  <Teleport to="body">
+    <div v-if="open" class="icon-library" @keydown="onKeydown">
+      <div class="icon-library__backdrop" aria-hidden="true" @click="close" />
+
+      <section
+        ref="dialog"
+        class="icon-library__dialog border-maru rounded-maru bg-maru-white"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="headingId"
+        :aria-busy="uploadBusy"
+      >
+        <header class="icon-library__header border-maru-bottom">
+          <div>
+            <p class="icon-library__kicker font-maru-bold">Your Yoto account</p>
+            <h2 :id="headingId" class="icon-library__title font-maru-bold">My Icons</h2>
+          </div>
+          <button
+            ref="closeButton"
+            type="button"
+            class="icon-library__close"
+            :disabled="uploadBusy"
+            aria-label="Close My Icons"
+            @click="close"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="icon-library__body">
+          <IconStaticEditor
+            v-if="editing"
+            ref="editor"
+            :busy="uploadBusy"
+            @cancel="showLibrary"
+            @upload="onUpload"
+          />
+
+          <template v-else>
+            <div class="icon-library__intro">
+              <div>
+                <h3 class="icon-library__section-title font-maru-bold">Reusable icons</h3>
+                <p class="icon-library__section-copy">Browse the tiny pictures already saved to your personal Yoto library.</p>
+              </div>
+              <button
+                ref="makeIconButton"
+                type="button"
+                class="maru-button maru-button--sm bg-maru-blue text-maru-white"
+                :disabled="uploadBlocked"
+                @click="showEditor"
+              >
+                <span class="maru-button__label">Make an icon</span>
+              </button>
+            </div>
+
+            <div v-if="status === 'loading'" class="icon-library__state" role="status">
+              <span class="icon-library__loading-mark" aria-hidden="true" />
+              <strong>Loading your icons…</strong>
+              <span>Louis is checking your personal Yoto library.</span>
+            </div>
+
+            <div v-else-if="status === 'error'" class="icon-library__state icon-library__state--error">
+              <strong>We couldn’t load your icons.</strong>
+              <span>{{ errorMessage }}</span>
+              <button ref="retryButton" type="button" class="icon-library__secondary-button" @click="retryLoad">
+                {{ recoveryRequired ? 'Refresh library' : 'Try again' }}
+              </button>
+            </div>
+
+            <div v-else-if="icons.length === 0" class="icon-library__state">
+              <div class="icon-library__empty-pixel" aria-hidden="true" />
+              <strong>No personal icons yet</strong>
+              <span>Turn a favorite photo or drawing into your first reusable 16×16 icon.</span>
+              <button type="button" class="icon-library__secondary-button" :disabled="uploadBlocked" @click="showEditor">Make the first one</button>
+            </div>
+
+            <ul v-else class="icon-library__grid" aria-label="Personal Yoto icons">
+              <li
+                v-for="(icon, index) in icons"
+                :key="icon.displayIconId"
+                class="icon-library__item"
+                :class="{ 'icon-library__item--newest': icon.mediaId === newestMediaId }"
+              >
+                <div class="icon-library__icon-stage icon-library__checkerboard">
+                  <img v-if="icon.url" :src="icon.url" :alt="`Personal icon ${index + 1}`" loading="lazy">
+                  <span v-else class="icon-library__missing-preview" aria-label="Preview unavailable">?</span>
+                </div>
+                <span v-if="icon.mediaId === newestMediaId" class="icon-library__new-label">Just added</span>
+              </li>
+            </ul>
+          </template>
+
+          <p v-if="errorMessage && (editing || status !== 'error')" class="icon-library__error" role="alert">{{ errorMessage }}</p>
+        </div>
+
+        <p class="sr-only" aria-live="polite">{{ announcement }}</p>
+      </section>
+    </div>
+  </Teleport>
+</template>
