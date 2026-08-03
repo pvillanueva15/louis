@@ -300,13 +300,69 @@ describe('Yoto card mutation service', () => {
     assert.deepEqual(calls[1]!.card!.unknownTopLevelField, rawCard.unknownTopLevelField)
   })
 
+  it('saves card title, track renames, icons, and removals with one GET and one POST', async () => {
+    const rawCard = card({
+      content: {
+        chapters: [{
+          key: 'chapter-1',
+          title: 'Track one',
+          tracks: [
+            { key: 'track-1', title: 'Track one', unknown: 'keep-one' },
+            { key: 'track-2', title: 'Track two', unknown: 'keep-two' },
+          ],
+          unknownChapterField: 'keep',
+        }],
+        grouping: { nested: ['keep'] },
+        unknownContentField: 'keep',
+      },
+    })
+    const { calls, dependencies } = recordingDependencies(rawCard)
+    const request: MutateCardRequest = {
+      expectedRevision: deriveRawCardRevision(rawCard),
+      mutations: [
+        { kind: 'rename-card', expectedTitle: 'Old title', title: 'New title' },
+        { kind: 'rename-track', chapterKey: 'chapter-1', trackKey: 'track-1', expectedTitle: 'Track one', title: 'Renamed one' },
+        {
+          kind: 'set-track-icon',
+          chapterKey: 'chapter-1',
+          trackKey: 'track-1',
+          expectedChapterIcon: { kind: 'absent' },
+          expectedTrackIcon: { kind: 'absent' },
+          mode: 'icon',
+          mediaId: MEDIA_ID,
+        },
+        { kind: 'remove-track', chapterKey: 'chapter-1', trackKey: 'track-2', expectedTitle: 'Track two' },
+      ],
+    }
+
+    await mutateYotoCard('card-1', request, 'access-token', dependencies)
+
+    assert.deepEqual(calls.map(call => call.kind), ['get', 'post'])
+    const posted = calls[1]!.card!
+    const chapter = (posted.content as { chapters: Array<Record<string, unknown>> }).chapters[0]!
+    const tracks = chapter.tracks as Array<Record<string, unknown>>
+    assert.equal(posted.title, 'New title')
+    assert.equal(chapter.title, 'Track one')
+    assert.deepEqual(tracks.map(track => track.key), ['track-1'])
+    assert.equal(tracks[0]!.title, 'Renamed one')
+    assert.equal((tracks[0]!.display as { icon16x16: string }).icon16x16, `yoto:#${MEDIA_ID}`)
+    assert.deepEqual(posted.metadata, {
+      ...(rawCard.metadata as Record<string, unknown>),
+      title: 'New title',
+    })
+    assert.deepEqual((posted.content as Record<string, unknown>).grouping, { nested: ['keep'] })
+    assert.equal(calls.length, 2)
+  })
+
   it('rejects stale icon state, podcasts, and wrong identity before POST', async () => {
     const staleCard = card({
       content: {
         chapters: [{
           key: 'chapter-1',
+          title: 'Chapter sentinel',
           tracks: [{
             key: 'track-1',
+            title: 'Track sentinel',
             display: { icon16x16: 'yoto:#changed' },
           }],
         }],
@@ -351,5 +407,66 @@ describe('Yoto card mutation service', () => {
       /wrong card identity/,
     )
     assert.deepEqual(wrong.calls.map(call => call.kind), ['get'])
+  })
+
+  it('preflights track drift, missing or ambiguous targets, malformed cards, and final removal with zero POSTs', async () => {
+    const scenarios: Array<{ rawCard: RawYotoCard; mutation: MutateCardRequest['mutations'][number]; message: RegExp }> = [
+      {
+        rawCard: card(),
+        mutation: { kind: 'rename-track', chapterKey: 'chapter-1', trackKey: 'track-1', expectedTitle: 'stale', title: 'New' },
+        message: /track title changed/,
+      },
+      {
+        rawCard: card(),
+        mutation: { kind: 'remove-track', chapterKey: 'chapter-1', trackKey: 'missing', expectedTitle: 'Track sentinel' },
+        message: /no longer exists/,
+      },
+      {
+        rawCard: card({
+          content: {
+            chapters: [{
+              key: 'chapter-1',
+              title: 'Chapter',
+              tracks: [
+                { key: 'track-1', title: 'Track sentinel' },
+                { key: 'track-1', title: 'Track sentinel' },
+              ],
+            }],
+          },
+        }),
+        mutation: { kind: 'rename-track', chapterKey: 'chapter-1', trackKey: 'track-1', expectedTitle: 'Track sentinel', title: 'New' },
+        message: /ambiguous/,
+      },
+      {
+        rawCard: card({ content: { chapters: null } }),
+        mutation: { kind: 'rename-track', chapterKey: 'chapter-1', trackKey: 'track-1', expectedTitle: 'Track sentinel', title: 'New' },
+        message: /chapters are malformed/,
+      },
+      {
+        rawCard: card({
+          content: {
+            chapters: [{
+              key: 'chapter-1',
+              title: 'Only',
+              tracks: [{ key: 'track-1', title: 'Only' }],
+            }],
+          },
+        }),
+        mutation: { kind: 'remove-track', chapterKey: 'chapter-1', trackKey: 'track-1', expectedTitle: 'Only' },
+        message: /keep at least one/,
+      },
+    ]
+
+    for (const scenario of scenarios) {
+      const { calls, dependencies } = recordingDependencies(scenario.rawCard)
+      await assert.rejects(
+        mutateYotoCard('card-1', {
+          expectedRevision: deriveRawCardRevision(scenario.rawCard),
+          mutations: [scenario.mutation],
+        }, 'access-token', dependencies),
+        scenario.message,
+      )
+      assert.deepEqual(calls.map(call => call.kind), ['get'])
+    }
   })
 })

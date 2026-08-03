@@ -5,6 +5,7 @@ import { extractYoutubeIdFromUrl } from './youtubeUrl'
 import { playlistRowId } from '#shared/myo-editor/playlistRowId'
 import { flattenCardTracks } from '#shared/myo-editor/trackLookup'
 import { toYotoTrackReuseSnapshot } from '#shared/myo-editor/yotoTrackPayload'
+import { loadedTrackTitle } from '#shared/myo-editor/rawTrackManagement'
 
 interface YoutubeVideoApiItem {
   id: string
@@ -23,7 +24,7 @@ const SOURCE_LABELS: Record<TrackSource, string> = {
 }
 
 export function yotoTrackId(chapterKey: string, trackKey: string): string {
-  return `yoto:${chapterKey}:${trackKey}`
+  return `yoto:${JSON.stringify([chapterKey, trackKey])}`
 }
 
 function classifyTrack(
@@ -36,7 +37,6 @@ function classifyTrack(
       ...track,
       source: 'app-youtube',
       youtubeId: manifestEntry.youtubeId,
-      title: manifestEntry.title || track.title,
     }
   }
 
@@ -150,7 +150,7 @@ function classifiedTrackToPlaylistTrack(
     return {
       ...base,
       id: rowId,
-      title: hydrated?.title || track.title,
+      title: loadedTrackTitle(track.title, hydrated?.title),
       subtitle: buildSubtitle(track.source, track.duration, hydrated?.channelTitle),
       thumbnailUrl: hydrated?.thumbnailUrl ?? '',
     }

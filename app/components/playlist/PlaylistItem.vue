@@ -8,14 +8,41 @@ const props = defineProps<{
   track: PlaylistTrack
   index: number
   locked?: boolean
+  reorderLocked?: boolean
+  titleEnabled?: boolean
   iconEnabled?: boolean
   effectiveIcon?: EffectiveTrackIcon
 }>()
 
 const emit = defineEmits<{
-  remove: [id: string]
+  remove: [track: PlaylistTrack]
   chooseIcon: [track: PlaylistTrack]
+  rename: [track: PlaylistTrack, title: string]
 }>()
+
+const editingTitle = ref(false)
+const titleDraft = ref(props.track.title)
+
+watch(() => props.track.title, (title) => {
+  if (!editingTitle.value) titleDraft.value = title
+})
+
+function startTitleEdit() {
+  if (props.locked || !props.titleEnabled) return
+  titleDraft.value = props.track.title
+  editingTitle.value = true
+}
+
+function saveTitleEdit() {
+  if (!editingTitle.value) return
+  emit('rename', props.track, titleDraft.value)
+  editingTitle.value = false
+}
+
+function cancelTitleEdit() {
+  titleDraft.value = props.track.title
+  editingTitle.value = false
+}
 
 const iconLabel = computed(() => {
   if (!props.effectiveIcon?.reference) return 'No track icon. Choose an icon.'
@@ -42,7 +69,7 @@ const { isDragging, isDropTarget } = useSortable({
   accept: ['playlist', 'result'],
   element,
   handle,
-  disabled: () => props.locked ?? false,
+  disabled: () => Boolean(props.locked || props.reorderLocked),
   data: (): PlaylistDragData => ({
     type: 'playlist',
     track: props.track,
@@ -64,7 +91,9 @@ const { isDragging, isDropTarget } = useSortable({
       ref="handle"
       type="button"
       class="playlist-handle shrink-0 bg-maru-gray-light"
+      :disabled="locked || reorderLocked"
       aria-label="Drag to reorder"
+      :title="reorderLocked ? 'Reset raw card changes before reordering tracks.' : undefined"
     >
       <span /><span /><span />
     </button>
@@ -78,7 +107,35 @@ const { isDragging, isDropTarget } = useSortable({
     >
 
     <div class="min-w-0 flex-1 leading-tight">
-      <p class="font-maru-bold text-xl sm:text-2xl line-clamp-2 text-pretty leading-[0.85]">{{ track.title }}</p>
+      <form
+        v-if="editingTitle"
+        class="flex items-center gap-1"
+        @submit.prevent="saveTitleEdit"
+      >
+        <input
+          v-model="titleDraft"
+          maxlength="100"
+          class="min-w-0 flex-1 rounded-maru border-2 border-maru-blue px-2 py-1 font-maru-bold text-xl leading-none"
+          :aria-label="`Edit ${track.title} title`"
+          autofocus
+          @keydown.esc.prevent="cancelTitleEdit"
+        >
+        <button type="submit" class="playlist-track-title-action" aria-label="Save track title">Save</button>
+        <button type="button" class="playlist-track-title-action" aria-label="Cancel track title edit" @click="cancelTitleEdit">Cancel</button>
+      </form>
+      <div v-else class="flex min-w-0 items-start gap-1">
+        <p class="min-w-0 flex-1 font-maru-bold text-xl sm:text-2xl line-clamp-2 text-pretty leading-[0.85]">{{ track.title }}</p>
+        <button
+          v-if="titleEnabled"
+          type="button"
+          class="playlist-track-title-action shrink-0"
+          :disabled="locked"
+          :aria-label="`Edit ${track.title} title`"
+          @click="startTitleEdit"
+        >
+          Edit
+        </button>
+      </div>
       <p class="font-maru-mono font-maru-regular text-[1.25rem] text-maru-black/75 leading-none">{{ track.subtitle }}</p>
     </div>
 
@@ -106,7 +163,7 @@ const { isDragging, isDropTarget } = useSortable({
       :disabled="locked"
       :aria-label="`Remove ${track.title}`"
       @mouseenter="onRemoveHover"
-      @click="emit('remove', track.id)"
+      @click="emit('remove', track)"
     >
       <MaruEmoji name="Fire" size="md" />
     </button>

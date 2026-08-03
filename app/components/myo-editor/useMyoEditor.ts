@@ -1,6 +1,5 @@
 import type { InjectionKey } from 'vue'
 import type { PlaylistTrack } from '~/components/playlist/types'
-import { playlistRowId } from '#shared/myo-editor/playlistRowId'
 import {
   classifyCreateStartFailure,
   cloneCardSaveSnapshot,
@@ -22,12 +21,27 @@ import {
   effectiveTrackIcon,
   resetTrackIconAssignments,
   stageTrackIconAssignment,
-  STRUCTURAL_ICON_MIX_MESSAGE,
   toTrackIconMutations,
   type EffectiveTrackIcon,
   type StagedTrackIconAssignment,
   type TrackIconSelection,
 } from '#shared/myo-editor/trackIconAssignment'
+import {
+  hasStableRawTrackIdentity,
+  hasUniqueStableRawTrackIdentities,
+  findRawTrackTargetIndex,
+  hasRawTrackMutationStages,
+  playlistHasLegacyStructuralChanges,
+  RAW_REMOVAL_STRUCTURAL_MESSAGE,
+  RAW_STRUCTURAL_MIX_MESSAGE,
+  replaceRawTrackTitle,
+  removeRawTrack,
+  stageRawTrackTitle,
+  undoRawTrackRemoval,
+  type RawTrackUndoToken,
+  type StagedTrackRemoval,
+  type StagedTrackRename,
+} from '#shared/myo-editor/rawTrackManagement'
 import {
   classifyExistingCardChanges,
   getCardTitleValidationError,
@@ -86,10 +100,19 @@ export interface MyoEditorContext {
   titleDirty: ComputedRef<boolean>
   playlistDirty: ComputedRef<boolean>
   iconDirty: ComputedRef<boolean>
-  hasStructuralIconConflict: ComputedRef<boolean>
+  hasRawStructuralConflict: ComputedRef<boolean>
+  rawTrackEditingSupported: ComputedRef<boolean>
+  structuralEditsBlocked: ComputedRef<boolean>
+  structuralEditHint: ComputedRef<string>
+  rawTrackUndo: Ref<RawTrackUndoToken | null>
   isDirty: ComputedRef<boolean>
   trackIconAssignments: Ref<StagedTrackIconAssignment[]>
   stageTrackIcon: (track: PlaylistTrack, selection: TrackIconSelection) => void
+  stageTrackTitle: (track: PlaylistTrack, title: string) => void
+  removeTrack: (track: PlaylistTrack) => void
+  undoTrackRemoval: () => void
+  canManageRawTrack: (track: PlaylistTrack) => boolean
+  prepareStructuralEdit: () => boolean
   getEffectiveTrackIcon: (track: PlaylistTrack) => EffectiveTrackIcon
   isCardSaving: (cardId: string) => boolean
   startNewPlaylist: () => boolean
@@ -102,10 +125,6 @@ export interface MyoEditorContext {
 }
 
 export const MYO_EDITOR_KEY: InjectionKey<MyoEditorContext> = Symbol('myoEditor')
-
-function playlistSnapshot(playlist: PlaylistTrack[]): string {
-  return JSON.stringify(playlist.map(playlistRowId))
-}
 
 function clonePlaylist(playlist: PlaylistTrack[]): PlaylistTrack[] {
   return playlist.map(item => ({ ...item }))
@@ -178,6 +197,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const playlist = ref<PlaylistTrack[]>([])
   const baselinePlaylist = ref<PlaylistTrack[]>([])
   const trackIconAssignments = ref<StagedTrackIconAssignment[]>([])
+  const trackTitleAssignments = ref<StagedTrackRename[]>([])
+  const trackRemovalAssignments = ref<StagedTrackRemoval[]>([])
+  const rawTrackUndo = ref<RawTrackUndoToken | null>(null)
   const originalCardDetail = ref<YotoCardDetail | null>(null)
   const isPodcast = ref(false)
   const loading = ref(false)
@@ -219,13 +241,24 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     isPlaylistEditorActive(selectedCardId.value, isNewPlaylist.value),
   )
 
-  const playlistDirty = computed(
-    () => playlistSnapshot(playlist.value) !== playlistSnapshot(baselinePlaylist.value),
-  )
+  const playlistDirty = computed(() => playlistHasLegacyStructuralChanges(
+    playlist.value,
+    baselinePlaylist.value,
+    trackRemovalAssignments.value,
+  ))
 
   const iconDirty = computed(() => trackIconAssignments.value.length > 0)
-  const hasStructuralIconConflict = computed(
-    () => playlistDirty.value && iconDirty.value,
+  const trackTitleDirty = computed(() => trackTitleAssignments.value.length > 0)
+  const trackRemovalDirty = computed(() => trackRemovalAssignments.value.length > 0)
+  const rawTrackMutationDirty = computed(() => hasRawTrackMutationStages(
+    iconDirty.value,
+    trackTitleDirty.value,
+    trackRemovalDirty.value,
+  ))
+  const rawTrackEditingSupported = computed(() =>
+    !isNewPlaylist.value
+    && baselinePlaylist.value.length > 0
+    && hasUniqueStableRawTrackIdentities(baselinePlaylist.value),
   )
 
   const existingCardChanges = computed(() =>
@@ -234,8 +267,23 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       baselineCardTitle.value,
       playlistDirty.value,
       iconDirty.value,
+      trackTitleDirty.value,
+      trackRemovalDirty.value,
     ),
   )
+
+  const hasRawStructuralConflict = computed(
+    () => playlistDirty.value && rawTrackMutationDirty.value,
+  )
+  const structuralEditsBlocked = computed(() =>
+    !isNewPlaylist.value && rawTrackMutationDirty.value,
+  )
+  const structuralEditHint = computed(() => {
+    if (!structuralEditsBlocked.value) return ''
+    return trackRemovalDirty.value
+      ? RAW_REMOVAL_STRUCTURAL_MESSAGE
+      : 'Reset the raw card changes before adding or reordering tracks.'
+  })
 
   const titleDirty = computed(
     () => !isNewPlaylist.value && existingCardChanges.value.titleDirty,
@@ -286,6 +334,13 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     return jobToSaveProgress(state)
   })
 
+  function resetRawTrackStages() {
+    trackIconAssignments.value = resetTrackIconAssignments()
+    trackTitleAssignments.value = []
+    trackRemovalAssignments.value = []
+    rawTrackUndo.value = null
+  }
+
   function restoreSnapshot(snapshot: CardSaveSnapshot) {
     const restored = cloneCardSaveSnapshot(snapshot)
     playlist.value = restored.playlist
@@ -293,7 +348,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = restored.cardTitle
     baselineCardTitle.value = restored.baselineCardTitle
     cardRevision.value = restored.cardRevision
-    trackIconAssignments.value = resetTrackIconAssignments()
+    resetRawTrackStages()
   }
 
   async function reloadCardFromApi(cardId: string, titleFallback?: string) {
@@ -306,13 +361,14 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = titleFallback || detail.title
     baselineCardTitle.value = cardTitle.value
     cardRevision.value = detail.revision
-    trackIconAssignments.value = resetTrackIconAssignments()
+    resetRawTrackStages()
   }
 
   function stageTrackIcon(track: PlaylistTrack, selection: TrackIconSelection) {
     if (
       isNewPlaylist.value
       || isPodcast.value
+      || !rawTrackEditingSupported.value
       || loading.value
       || isPlaylistLocked.value
     ) return
@@ -322,6 +378,130 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       selection,
     )
     errorMessage.value = ''
+  }
+
+  function baselineTrackFor(track: PlaylistTrack): PlaylistTrack | undefined {
+    return baselinePlaylist.value.find(item =>
+      item.chapterKey === track.chapterKey && item.trackKey === track.trackKey,
+    )
+  }
+
+  function canManageRawTrack(track: PlaylistTrack): boolean {
+    return Boolean(
+      selectedCardId.value
+      && !isNewPlaylist.value
+      && !isPodcast.value
+      && rawTrackEditingSupported.value
+      && hasStableRawTrackIdentity(track),
+    )
+  }
+
+  function stageTrackTitle(track: PlaylistTrack, title: string) {
+    if (
+      !canManageRawTrack(track)
+      || loading.value
+      || isPlaylistLocked.value
+    ) return
+    if (playlistDirty.value) {
+      errorMessage.value = RAW_STRUCTURAL_MIX_MESSAGE
+      return
+    }
+    const baseline = baselineTrackFor(track)
+    if (!baseline) {
+      errorMessage.value = 'Reload this card before editing track titles.'
+      return
+    }
+    const result = stageRawTrackTitle(
+      trackTitleAssignments.value,
+      track,
+      baseline.title,
+      title,
+    )
+    if (result.error) {
+      errorMessage.value = result.error
+      return
+    }
+    trackTitleAssignments.value = result.renames
+    playlist.value = replaceRawTrackTitle(playlist.value, track, result.title)
+    errorMessage.value = ''
+  }
+
+  function removeTrack(track: PlaylistTrack) {
+    if (loading.value || isPlaylistLocked.value) return
+    const visibleIndex = hasStableRawTrackIdentity(track)
+      ? findRawTrackTargetIndex(playlist.value, track)
+      : playlist.value.findIndex(item => item === track || item.id === track.id)
+    if (visibleIndex < 0) return
+
+    if (isNewPlaylist.value) {
+      playlist.value = playlist.value.filter((_, index) => index !== visibleIndex)
+      errorMessage.value = ''
+      return
+    }
+    const baseline = baselineTrackFor(track)
+    if (!baseline) {
+      playlist.value = playlist.value.filter((_, index) => index !== visibleIndex)
+      errorMessage.value = ''
+      return
+    }
+    if (!canManageRawTrack(track)) {
+      errorMessage.value = 'This card has missing or duplicate stable track identities and cannot be managed safely.'
+      return
+    }
+    if (playlistDirty.value) {
+      errorMessage.value = RAW_STRUCTURAL_MIX_MESSAGE
+      return
+    }
+    const result = removeRawTrack(
+      playlist.value,
+      visibleIndex,
+      baseline.title,
+      trackTitleAssignments.value,
+      trackRemovalAssignments.value,
+      trackIconAssignments.value,
+    )
+    if (!result) {
+      errorMessage.value = 'A card must keep at least one track.'
+      return
+    }
+    playlist.value = result.playlist
+    trackTitleAssignments.value = result.renames
+    trackRemovalAssignments.value = result.removals
+    trackIconAssignments.value = result.icons
+    rawTrackUndo.value = result.undo
+    errorMessage.value = ''
+  }
+
+  function undoTrackRemoval() {
+    if (!rawTrackUndo.value || loading.value || isPlaylistLocked.value) return
+    const result = undoRawTrackRemoval(
+      playlist.value,
+      trackTitleAssignments.value,
+      trackRemovalAssignments.value,
+      trackIconAssignments.value,
+      rawTrackUndo.value,
+    )
+    playlist.value = result.playlist
+    trackTitleAssignments.value = result.renames
+    trackRemovalAssignments.value = result.removals
+    trackIconAssignments.value = result.icons
+    rawTrackUndo.value = null
+    errorMessage.value = ''
+  }
+
+  function prepareStructuralEdit(): boolean {
+    if (trackRemovalDirty.value) {
+      errorMessage.value = RAW_REMOVAL_STRUCTURAL_MESSAGE
+      return false
+    }
+    if (
+      trackTitleDirty.value
+      || iconDirty.value
+    ) {
+      errorMessage.value = RAW_STRUCTURAL_MIX_MESSAGE
+      return false
+    }
+    return true
   }
 
   function getEffectiveTrackIcon(track: PlaylistTrack): EffectiveTrackIcon {
@@ -660,7 +840,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         isPodcast.value = false
         playlist.value = []
         baselinePlaylist.value = []
-        trackIconAssignments.value = resetTrackIconAssignments()
+        resetRawTrackStages()
         baselineCardTitle.value = ''
         cardRevision.value = ''
         originalCardDetail.value = null
@@ -680,7 +860,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       isPodcast.value = false
       playlist.value = []
       baselinePlaylist.value = []
-      trackIconAssignments.value = resetTrackIconAssignments()
+      resetRawTrackStages()
       baselineCardTitle.value = ''
       cardRevision.value = ''
       originalCardDetail.value = null
@@ -710,7 +890,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     isPodcast.value = false
     playlist.value = []
     baselinePlaylist.value = []
-    trackIconAssignments.value = resetTrackIconAssignments()
+    resetRawTrackStages()
     originalCardDetail.value = null
     errorMessage.value = ''
     createOutcomeUncertain.value = false
@@ -738,7 +918,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     isPodcast.value = false
     playlist.value = []
     baselinePlaylist.value = []
-    trackIconAssignments.value = resetTrackIconAssignments()
+    resetRawTrackStages()
     originalCardDetail.value = null
     errorMessage.value = ''
     createOutcomeUncertain.value = false
@@ -748,7 +928,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   function resetChanges() {
     if (!isDirty.value || isPlaylistLocked.value) return
     playlist.value = clonePlaylist(baselinePlaylist.value)
-    trackIconAssignments.value = resetTrackIconAssignments()
+    resetRawTrackStages()
     cardTitle.value = resetCardTitle(isNewPlaylist.value, baselineCardTitle.value)
     errorMessage.value = ''
     if (isNewPlaylist.value) createOutcomeUncertain.value = false
@@ -765,6 +945,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     }
     if (loading.value || isPlaylistLocked.value) {
       return { ok: false, message: 'Wait for the current card operation to finish.' }
+    }
+    if (!prepareStructuralEdit()) {
+      return { ok: false, message: errorMessage.value }
     }
 
     const countError = getTrackCountLimitError(playlist.value.length + tracks.length)
@@ -852,15 +1035,15 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       return
     }
 
-    if (hasStructuralIconConflict.value) {
-      errorMessage.value = STRUCTURAL_ICON_MIX_MESSAGE
+    if (hasRawStructuralConflict.value) {
+      errorMessage.value = RAW_STRUCTURAL_MIX_MESSAGE
       playEvent('saveError')
       return
     }
 
     if (existingCardChanges.value.rawMutationOnly) {
       if (!cardRevision.value) {
-        errorMessage.value = 'Reload this card before updating its title or track icons.'
+        errorMessage.value = 'Reload this card before updating its raw card changes.'
         playEvent('saveError')
         return
       }
@@ -873,7 +1056,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
           title: cardTitle.value.trim(),
         })
       }
+      mutations.push(...trackTitleAssignments.value.map(({ mutation }) => mutation))
       mutations.push(...toTrackIconMutations(trackIconAssignments.value))
+      mutations.push(...trackRemovalAssignments.value.map(({ mutation }) => mutation))
 
       const request: MutateCardRequest = {
         expectedRevision: cardRevision.value,
@@ -900,7 +1085,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         errorMessage.value = e.data?.statusMessage
           ?? e.statusMessage
           ?? e.message
-          ?? 'Failed to update card title or track icons'
+          ?? 'Failed to update the card'
         playEvent('saveError')
       }
       finally {
@@ -992,10 +1177,19 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     titleDirty,
     playlistDirty,
     iconDirty,
-    hasStructuralIconConflict,
+    hasRawStructuralConflict,
+    rawTrackEditingSupported,
+    structuralEditsBlocked,
+    structuralEditHint,
+    rawTrackUndo,
     isDirty,
     trackIconAssignments,
     stageTrackIcon,
+    stageTrackTitle,
+    removeTrack,
+    undoTrackRemoval,
+    canManageRawTrack,
+    prepareStructuralEdit,
     getEffectiveTrackIcon,
     isCardSaving,
     startNewPlaylist,

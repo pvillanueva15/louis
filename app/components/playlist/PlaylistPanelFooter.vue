@@ -11,7 +11,7 @@ import {
   UNCERTAIN_CREATE_START_MESSAGE,
 } from '#shared/myo-editor/standalonePlaylist'
 import { getCardTitleValidationError } from '#shared/yoto/cardMutation'
-import { STRUCTURAL_ICON_MIX_MESSAGE } from '#shared/myo-editor/trackIconAssignment'
+import { RAW_STRUCTURAL_MIX_MESSAGE } from '#shared/myo-editor/rawTrackManagement'
 
 const editor = inject(MYO_EDITOR_KEY, null)
 const { playEvent } = useUiSound()
@@ -29,7 +29,9 @@ const errorMessage = editor?.errorMessage
 const createOutcomeUncertain = editor?.createOutcomeUncertain
 const playlist = editor?.playlist
 const playlistDirty = editor?.playlistDirty
-const hasStructuralIconConflict = editor?.hasStructuralIconConflict
+const hasRawStructuralConflict = editor?.hasRawStructuralConflict
+const rawTrackUndo = editor?.rawTrackUndo
+const structuralEditHint = editor?.structuralEditHint
 
 const showCapacityConfirm = ref(false)
 
@@ -61,7 +63,7 @@ const updateTitleValidationError = computed(() =>
 
 const footerHint = computed(() => {
   if (isPodcast?.value) return 'Podcast cards cannot be edited yet.'
-  if (hasStructuralIconConflict?.value) return STRUCTURAL_ICON_MIX_MESSAGE
+  if (hasRawStructuralConflict?.value) return RAW_STRUCTURAL_MIX_MESSAGE
   if (createOutcomeUncertain?.value) {
     return errorMessage?.value || UNCERTAIN_CREATE_START_MESSAGE
   }
@@ -69,7 +71,7 @@ const footerHint = computed(() => {
   if (createValidationError.value) return createValidationError.value
   if (updateTitleValidationError.value) return updateTitleValidationError.value
   if (overTrackLimit.value) return YOTO_MYO_TRACK_COUNT_MESSAGE
-  return ''
+  return structuralEditHint?.value ?? ''
 })
 
 const canSave = computed(() => {
@@ -78,7 +80,7 @@ const canSave = computed(() => {
     && !isPlaylistLocked?.value
     && !saveProgressTestMode.value
     && !isPodcast?.value
-    && !hasStructuralIconConflict?.value,
+    && !hasRawStructuralConflict?.value,
   )
   if (!ready) return false
   if (isNewPlaylist?.value) {
@@ -156,6 +158,15 @@ function onReset() {
   editor?.resetChanges()
 }
 
+function onUndoRemoval() {
+  if (!rawTrackUndo?.value || loading?.value || isPlaylistLocked?.value) {
+    playEvent('disabled')
+    return
+  }
+  playEvent('resetPlaylist')
+  editor?.undoTrackRemoval()
+}
+
 watch(
   () => [
     overCapacity.value,
@@ -184,6 +195,15 @@ watch(
       <div class="w-full flex items-center gap-2 sm:gap-3 min-w-0">
         <PlaylistCapacityMeters />
         <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+          <button
+            v-if="rawTrackUndo"
+            type="button"
+            class="panel-footer-btn panel-footer-btn--short panel-footer-btn--secondary shrink-0"
+            :disabled="loading || isPlaylistLocked"
+            @click="onUndoRemoval"
+          >
+            <span class="panel-footer-btn__label">Undo remove</span>
+          </button>
           <button
             type="button"
             class="panel-footer-btn panel-footer-btn--short panel-footer-btn--secondary shrink-0"
