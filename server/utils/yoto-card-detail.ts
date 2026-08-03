@@ -1,13 +1,14 @@
-import type { YotoCardDetail, YotoTrackDetail } from '#shared/myo-editor/types'
-import type { YotoCardMetadata } from '#shared/myo-editor/types'
-import { mapRawIconState } from '#shared/yoto/cardMutation'
-import {
-  fetchRawYotoCard,
-} from './yoto-card-raw'
+import type {
+  YotoCardDetail,
+  YotoTrackDetail,
+  YotoCardMetadata,
+} from '../../shared/myo-editor/types.ts'
+import { mapRawIconState } from '../../shared/yoto/cardMutation.ts'
 import {
   deriveRawCardRevision,
   type RawYotoCard,
-} from './yoto-card-raw-contract'
+} from './yoto-card-raw-contract.ts'
+import { toSaveAsSourceSnapshot } from './save-as-source.ts'
 
 interface YotoApiTrack {
   key: string
@@ -105,6 +106,7 @@ export function mapYotoCardDetail(
     feedUrl: metadata?.feedUrl ?? null,
     metadata,
     chapters,
+    saveAsSource: toSaveAsSourceSnapshot(data as unknown as RawYotoCard),
   }
 }
 
@@ -112,6 +114,7 @@ export async function fetchYotoCardDetail(
   cardId: string,
   accessToken: string,
 ): Promise<YotoCardDetail> {
+  const { fetchRawYotoCard } = await import('./yoto-card-raw.ts')
   const raw = await fetchRawYotoCard(cardId, accessToken)
   return mapYotoCardDetail(
     raw as RawYotoCard & YotoApiCardDetail,

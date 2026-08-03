@@ -23,6 +23,7 @@ const loading = editor?.loading
 const isPlaylistLocked = editor?.isPlaylistLocked
 const selectedCardId = editor?.selectedCardId
 const isNewPlaylist = editor?.isNewPlaylist
+const isSaveAsDraft = editor?.isSaveAsDraft
 const cardTitle = editor?.cardTitle
 const isPodcast = editor?.isPodcast
 const errorMessage = editor?.errorMessage
@@ -51,7 +52,9 @@ const overTrackLimit = computed(
 
 const createValidationError = computed(() =>
   isNewPlaylist?.value
-    ? getStandalonePlaylistValidationError(cardTitle?.value ?? '', playlist?.value ?? [])
+    ? getStandalonePlaylistValidationError(cardTitle?.value ?? '', playlist?.value ?? [], {
+        isSaveAsDraft: isSaveAsDraft?.value,
+      })
     : null,
 )
 
@@ -104,6 +107,15 @@ const actionLabel = computed(() => {
 const canReset = computed(
   () => Boolean(isDirty?.value && !loading?.value && !isPlaylistLocked?.value && !saveProgressTestMode.value),
 )
+
+const canSaveAs = computed(() => Boolean(
+  selectedCardId?.value
+  && !isNewPlaylist?.value
+  && !isPodcast?.value
+  && !loading?.value
+  && !isPlaylistLocked?.value
+  && !saveProgressTestMode.value,
+))
 
 function closeCapacityConfirm() {
   showCapacityConfirm.value = false
@@ -158,6 +170,15 @@ function onReset() {
   editor?.resetChanges()
 }
 
+function onSaveAs() {
+  if (!canSaveAs.value) {
+    playEvent('disabled')
+    return
+  }
+  playEvent('buttonPrimary')
+  editor?.saveAsCard()
+}
+
 function onUndoRemoval() {
   if (!rawTrackUndo?.value || loading?.value || isPlaylistLocked?.value) {
     playEvent('disabled')
@@ -195,6 +216,16 @@ watch(
       <div class="w-full flex items-center gap-2 sm:gap-3 min-w-0">
         <PlaylistCapacityMeters />
         <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+          <button
+            v-if="selectedCardId && !isNewPlaylist"
+            type="button"
+            class="panel-footer-btn panel-footer-btn--short panel-footer-btn--secondary shrink-0"
+            :aria-disabled="!canSaveAs"
+            :tabindex="canSaveAs ? 0 : -1"
+            @click="onSaveAs"
+          >
+            <span class="panel-footer-btn__label">Save As</span>
+          </button>
           <button
             v-if="rawTrackUndo"
             type="button"

@@ -1,4 +1,11 @@
-import type { PlaylistTrack, SaveJobPhase, SaveOperation } from './types'
+import type {
+  PlaylistTrack,
+  SaveAsSourceReference,
+  SaveAsSourceSnapshot,
+  SaveJobPhase,
+  SaveOperation,
+} from './types'
+import type { CardMutation } from '../yoto/cardMutation.ts'
 import { getCardTitleValidationError } from '../yoto/cardMutation.ts'
 
 export const NEW_PLAYLIST_SAVE_KEY = 'new-playlist-draft'
@@ -15,6 +22,13 @@ export interface CardSaveSnapshot {
   cardTitle: string
   baselineCardTitle: string
   cardRevision: string
+  saveAsSource?: SaveAsSourceSnapshot
+  saveAsSourceReference?: SaveAsSourceReference
+  saveAsMutations?: CardMutation[]
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 export function cloneCardSaveSnapshot(snapshot: CardSaveSnapshot): CardSaveSnapshot {
@@ -24,6 +38,15 @@ export function cloneCardSaveSnapshot(snapshot: CardSaveSnapshot): CardSaveSnaps
     cardTitle: snapshot.cardTitle,
     baselineCardTitle: snapshot.baselineCardTitle,
     cardRevision: snapshot.cardRevision,
+    ...(snapshot.saveAsSource
+      ? { saveAsSource: cloneJson(snapshot.saveAsSource) }
+      : {}),
+    ...(snapshot.saveAsSourceReference
+      ? { saveAsSourceReference: { ...snapshot.saveAsSourceReference } }
+      : {}),
+    ...(snapshot.saveAsMutations
+      ? { saveAsMutations: cloneJson(snapshot.saveAsMutations) }
+      : {}),
   }
 }
 
@@ -52,6 +75,24 @@ export function isPlaylistEditorActive(
   isNewPlaylist: boolean,
 ): boolean {
   return isNewPlaylist || Boolean(selectedCardId)
+}
+
+export function shouldConfirmEditorNavigation(
+  isEditing: boolean,
+  isDirty: boolean,
+  saveActive: boolean,
+): boolean {
+  return isEditing && isDirty && !saveActive
+}
+
+export function resetEditorTitle(
+  isNewPlaylist: boolean,
+  isSaveAsDraft: boolean,
+  baselineTitle: string,
+): string {
+  return isSaveAsDraft
+    ? baselineTitle
+    : resetCardTitle(isNewPlaylist, baselineTitle)
 }
 
 export function resolveClientSaveTarget(target: ClientSaveTarget): ClientSaveIdentity {
@@ -87,13 +128,22 @@ export function isSupportedYoutubeTrack(track: PlaylistTrack): boolean {
 export function getStandalonePlaylistValidationError(
   title: string,
   playlist: PlaylistTrack[],
+  options?: {
+    isSaveAsDraft?: boolean
+  },
 ): string | null {
   const titleError = getCardTitleValidationError(title)
   if (titleError) return titleError
   if (playlist.length === 0) {
+    if (options?.isSaveAsDraft) {
+      return 'A copied playlist must keep at least one track before creating it.'
+    }
     return 'Add at least one YouTube track before creating this playlist.'
   }
-  if (playlist.some(track => !isSupportedYoutubeTrack(track))) {
+  if (
+    !options?.isSaveAsDraft
+    && playlist.some(track => !isSupportedYoutubeTrack(track))
+  ) {
     return 'New playlists can only include supported YouTube tracks.'
   }
   return null

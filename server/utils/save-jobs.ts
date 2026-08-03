@@ -1,14 +1,22 @@
 import type { H3Event } from 'h3'
 import type {
   PlaylistTrack,
+  SaveAsSourceReference,
+  SaveAsSourceSnapshot,
   SaveJobState,
   SaveJobTrackProgress,
   SaveTrackStatus,
   TranscodedAudioResult,
 } from '#shared/myo-editor/types'
+import type { CardMutation } from '#shared/yoto/cardMutation'
 import { buildProvenance } from '#shared/myo-editor/parseProvenance'
 import { buildSavePlan } from '#shared/myo-editor/buildSavePlan'
 import { playlistToYotoContent } from '#shared/myo-editor/playlistToYotoContent'
+import {
+  buildSaveAsContent,
+  buildSaveAsCreateBody,
+  buildSaveAsPlan,
+} from './save-as-content'
 import { flattenCardTracks } from '#shared/myo-editor/trackLookup'
 import { resolveDisplayIcon, toYotoTrackPayload } from '#shared/myo-editor/yotoTrackPayload'
 import {
@@ -20,6 +28,7 @@ import {
 import { downloadYoutubeAudio } from './youtube-download'
 import { uploadAudioFile } from './yoto-media'
 import { createOrUpdateContent } from './yoto-content'
+import type { CreateOrUpdateContentBody } from './yoto-content'
 import {
   isUncertainCreatePostError,
   requireCreatedCardId,
@@ -29,6 +38,7 @@ import {
 import { mergeContentMetadata } from './yoto-metadata'
 import { fetchYotoCardDetail } from './yoto-card-detail'
 import { getYotoAccessToken } from './yoto'
+import { resolveAuthoritativeSaveAsSource } from './save-as-source'
 
 /** Process-local only — cleared on every container restart/redeploy. See docs/DEMO.md §4b. */
 const jobs = new Map<string, SaveJobState>()
@@ -102,7 +112,11 @@ export function startSaveJob(
   playlist: PlaylistTrack[],
   cardTitle: string,
   baselinePlaylist: PlaylistTrack[],
-  options?: { acknowledgeCapacityRisk?: boolean },
+  options?: {
+    acknowledgeCapacityRisk?: boolean
+    saveAsSourceReference?: SaveAsSourceReference
+    saveAsMutations?: CardMutation[]
+  },
 ): SaveJobState {
   const jobId = crypto.randomUUID()
   const acknowledgeCapacityRisk = options?.acknowledgeCapacityRisk === true
@@ -130,6 +144,8 @@ export function startSaveJob(
         cardTitle,
         baselinePlaylist,
         acknowledgeCapacityRisk,
+        options?.saveAsSourceReference,
+        options?.saveAsMutations ?? [],
       )
     }
     catch (err: unknown) {
@@ -154,6 +170,8 @@ async function runSaveJob(
   cardTitle: string,
   baselinePlaylist: PlaylistTrack[],
   acknowledgeCapacityRisk: boolean,
+  saveAsSourceReference?: SaveAsSourceReference,
+  saveAsMutations: CardMutation[] = [],
 ) {
   const job = jobs.get(jobId)
   if (!job) return
@@ -162,11 +180,23 @@ async function runSaveJob(
   let createOutcomeUncertain = false
 
   try {
+    if (saveAsSourceReference && target.operation !== 'create') {
+      throw new Error('A Save As source reference cannot target an existing card update.')
+    }
+    const saveAsSource: SaveAsSourceSnapshot | undefined = saveAsSourceReference
+      ? await resolveAuthoritativeSaveAsSource(
+          saveAsSourceReference,
+          saveAsMutations,
+          accessToken,
+        )
+      : undefined
     const detail = target.operation === 'update'
       ? await fetchYotoCardDetail(target.cardId, accessToken)
       : undefined
 
-    const plan = buildSavePlan(baselinePlaylist, playlist, detail)
+    const plan = saveAsSource
+      ? buildSaveAsPlan(playlist, saveAsSource)
+      : buildSavePlan(baselinePlaylist, playlist, detail)
     if (plan.errors.length > 0) {
       throw createError({
         statusCode: 400,
@@ -176,7 +206,9 @@ async function runSaveJob(
 
     const extractActions = plan.tracks.filter(action => action.kind === 'extract-youtube')
     const reuseActions = plan.tracks.filter(
-      action => action.kind === 'reuse-yoto' || action.kind === 'passthrough-stream',
+      action => action.kind === 'reuse-yoto'
+        || action.kind === 'passthrough-stream'
+        || action.kind === 'reuse-source',
     )
 
     const OVERALL_START = 2
@@ -298,21 +330,59 @@ async function runSaveJob(
 
     setJobProgress({ status: 'posting', progress: OVERALL_POSTING, operationProgress: 90 })
 
-    const built = playlistToYotoContent(
-      cardTitle,
-      playlist,
-      plan.tracks,
-      uploadedByIndex,
-      {
-        existingMetadataNote: detail?.metadataNote,
-        existingContentVersion: detail?.contentVersion,
-      },
-    )
+    let builtTracks: Array<{
+      title?: unknown
+      duration?: unknown
+      fileSize?: unknown
+    }>
+    let totalDuration: number
+    let totalFileSize: number
+    let contentBody: CreateOrUpdateContentBody
 
-    const builtTrackCount = built.chapters.reduce(
-      (sum, chapter) => sum + chapter.tracks.length,
-      0,
-    )
+    if (saveAsSource) {
+      const built = buildSaveAsContent(
+        playlist,
+        saveAsSource,
+        plan.tracks,
+        uploadedByIndex,
+      )
+      builtTracks = built.tracks
+      totalDuration = built.totalDuration
+      totalFileSize = built.totalFileSize
+      contentBody = buildSaveAsCreateBody(cardTitle, built) as CreateOrUpdateContentBody
+    }
+    else {
+      const built = playlistToYotoContent(
+        cardTitle,
+        playlist,
+        plan.tracks,
+        uploadedByIndex,
+        {
+          existingMetadataNote: detail?.metadataNote,
+          existingContentVersion: detail?.contentVersion,
+        },
+      )
+      builtTracks = built.chapters.flatMap(chapter => chapter.tracks)
+      totalDuration = built.totalDuration
+      totalFileSize = built.totalFileSize
+      contentBody = {
+        title: cardTitle,
+        content: {
+          version: built.contentVersion,
+          chapters: built.chapters,
+        },
+        metadata: mergeContentMetadata(detail?.metadata, {
+          title: cardTitle,
+          note: built.note,
+          media: {
+            duration: totalDuration,
+            fileSize: totalFileSize,
+            readableFileSize: Math.round((totalFileSize / 1024 / 1024) * 10) / 10,
+          },
+        }),
+      }
+    }
+    const builtTrackCount = builtTracks.length
     if (builtTrackCount !== playlist.length) {
       throw createError({
         statusCode: 500,
@@ -321,25 +391,25 @@ async function runSaveJob(
     }
 
     if (!acknowledgeCapacityRisk) {
-      for (const chapter of built.chapters) {
-        for (const track of chapter.tracks) {
-          const mediaError = getTrackMediaLimitError({
-            title: track.title || chapter.title,
-            duration: track.duration,
-            fileSize: track.fileSize,
+      for (const [index, track] of builtTracks.entries()) {
+        const mediaError = getTrackMediaLimitError({
+          title: typeof track.title === 'string'
+            ? track.title
+            : playlist[index]?.title ?? `Track ${index + 1}`,
+          duration: typeof track.duration === 'number' ? track.duration : undefined,
+          fileSize: typeof track.fileSize === 'number' ? track.fileSize : undefined,
+        })
+        if (mediaError) {
+          throw createError({
+            statusCode: 413,
+            message: mediaError,
           })
-          if (mediaError) {
-            throw createError({
-              statusCode: 413,
-              message: mediaError,
-            })
-          }
         }
       }
 
       const totalsError = getCardTotalsLimitError({
-        totalDuration: built.totalDuration,
-        totalFileSize: built.totalFileSize,
+        totalDuration,
+        totalFileSize,
       })
       if (totalsError) {
         throw createError({
@@ -354,22 +424,7 @@ async function runSaveJob(
       response = await createOrUpdateContent(accessToken, withContentCardId(
         target.operation,
         target.operation === 'update' ? target.cardId : undefined,
-        {
-          title: cardTitle,
-          content: {
-            version: built.contentVersion,
-            chapters: built.chapters,
-          },
-          metadata: mergeContentMetadata(detail?.metadata, {
-            title: cardTitle,
-            note: built.note,
-            media: {
-              duration: built.totalDuration,
-              fileSize: built.totalFileSize,
-              readableFileSize: Math.round((built.totalFileSize / 1024 / 1024) * 10) / 10,
-            },
-          }),
-        },
+        contentBody,
       ))
     }
     catch (err: unknown) {

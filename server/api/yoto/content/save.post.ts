@@ -1,15 +1,8 @@
 import { getStandalonePlaylistValidationError } from '#shared/myo-editor/standalonePlaylist'
-import type { PlaylistTrack } from '#shared/myo-editor/types'
 import { getScopeCookie, hasContentManageScope } from '../../../utils/yoto-auth'
+import { parseCreateSaveRequest } from '../../../utils/save-as-request'
 import { startSaveJob } from '../../../utils/save-jobs'
 import { getYotoAccessToken } from '../../../utils/yoto'
-
-interface CreateSaveRequestBody {
-  playlist: PlaylistTrack[]
-  cardTitle: string
-  /** When true, skip our MYO capacity gates and let Yoto decide. */
-  acknowledgeCapacityRisk?: boolean
-}
 
 export default defineEventHandler(async (event) => {
   const scope = getScopeCookie(event)
@@ -22,10 +15,24 @@ export default defineEventHandler(async (event) => {
 
   await getYotoAccessToken(event)
 
-  const body = await readBody<CreateSaveRequestBody>(event)
-  const playlist = Array.isArray(body?.playlist) ? body.playlist : []
-  const cardTitle = body?.cardTitle?.trim() ?? ''
-  const validationError = getStandalonePlaylistValidationError(cardTitle, playlist)
+  let request
+  try {
+    request = parseCreateSaveRequest(await readBody<unknown>(event))
+  }
+  catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'The create request is malformed.'
+    throw createError({ statusCode: 400, statusMessage: message })
+  }
+  const {
+    playlist,
+    cardTitle,
+    saveAsSourceReference,
+    saveAsMutations,
+    acknowledgeCapacityRisk,
+  } = request
+  const validationError = getStandalonePlaylistValidationError(cardTitle, playlist, {
+    isSaveAsDraft: Boolean(saveAsSourceReference),
+  })
   if (validationError) {
     throw createError({ statusCode: 400, statusMessage: validationError })
   }
@@ -36,7 +43,11 @@ export default defineEventHandler(async (event) => {
     playlist,
     cardTitle,
     [],
-    { acknowledgeCapacityRisk: body?.acknowledgeCapacityRisk === true },
+    {
+      acknowledgeCapacityRisk,
+      saveAsSourceReference,
+      saveAsMutations,
+    },
   )
 
   return { jobId: job.id, status: job.status }
