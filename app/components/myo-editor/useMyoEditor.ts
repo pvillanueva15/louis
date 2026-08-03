@@ -11,12 +11,19 @@ import {
   NEW_PLAYLIST_SAVE_KEY,
   notifyConfirmedCardUpdated,
   notifyConfirmedPlaylistCreated,
+  resetEditorTitle,
   resolveClientSaveTarget,
   resolveSavedCardId,
   shouldBlockEditorNavigation,
+  shouldConfirmEditorNavigation,
   shouldWarnBeforeUnload,
 } from '#shared/myo-editor/standalonePlaylist'
-import type { SaveJobPhase } from '#shared/myo-editor/types'
+import type {
+  SaveAsSourceReference,
+  SaveAsSourceSnapshot,
+  SaveJobPhase,
+} from '#shared/myo-editor/types'
+import { prepareSaveAsDraft } from '#shared/myo-editor/saveAsDraft'
 import {
   effectiveTrackIcon,
   resetTrackIconAssignments,
@@ -45,7 +52,7 @@ import {
 import {
   classifyExistingCardChanges,
   getCardTitleValidationError,
-  resetCardTitle,
+  type CardMutation,
   type MutateCardRequest,
 } from '#shared/yoto/cardMutation'
 import type { YotoMyoCard } from '~/components/yoto-myo/types'
@@ -86,6 +93,7 @@ export interface CardSaveState {
 export interface MyoEditorContext {
   selectedCardId: Ref<string | null>
   isNewPlaylist: Ref<boolean>
+  isSaveAsDraft: Ref<boolean>
   cardTitle: Ref<string>
   playlist: Ref<PlaylistTrack[]>
   isEditing: ComputedRef<boolean>
@@ -116,6 +124,7 @@ export interface MyoEditorContext {
   getEffectiveTrackIcon: (track: PlaylistTrack) => EffectiveTrackIcon
   isCardSaving: (cardId: string) => boolean
   startNewPlaylist: () => boolean
+  saveAsCard: () => boolean
   selectCard: (card: YotoMyoCard) => Promise<void>
   clearSelection: (force?: boolean) => boolean
   resetChanges: () => void
@@ -191,6 +200,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const { playEvent } = useUiSound()
   const selectedCardId = ref<string | null>(null)
   const isNewPlaylist = ref(false)
+  const isSaveAsDraft = ref(false)
   const cardTitle = ref('')
   const baselineCardTitle = ref('')
   const cardRevision = ref('')
@@ -201,6 +211,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const trackRemovalAssignments = ref<StagedTrackRemoval[]>([])
   const rawTrackUndo = ref<RawTrackUndoToken | null>(null)
   const originalCardDetail = ref<YotoCardDetail | null>(null)
+  const saveAsSourceSnapshot = ref<SaveAsSourceSnapshot | null>(null)
+  const saveAsSourceReference = ref<SaveAsSourceReference | null>(null)
+  const saveAsMutations = ref<CardMutation[]>([])
   const isPodcast = ref(false)
   const loading = ref(false)
   const errorMessage = ref('')
@@ -341,6 +354,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     rawTrackUndo.value = null
   }
 
+  function clearSaveAsDraftSource() {
+    saveAsSourceSnapshot.value = null
+    saveAsSourceReference.value = null
+    saveAsMutations.value = []
+  }
+
   function restoreSnapshot(snapshot: CardSaveSnapshot) {
     const restored = cloneCardSaveSnapshot(snapshot)
     playlist.value = restored.playlist
@@ -348,6 +367,10 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = restored.cardTitle
     baselineCardTitle.value = restored.baselineCardTitle
     cardRevision.value = restored.cardRevision
+    isSaveAsDraft.value = Boolean(restored.saveAsSource && restored.saveAsSourceReference)
+    saveAsSourceSnapshot.value = restored.saveAsSource ?? null
+    saveAsSourceReference.value = restored.saveAsSourceReference ?? null
+    saveAsMutations.value = restored.saveAsMutations ?? []
     resetRawTrackStages()
   }
 
@@ -361,6 +384,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = titleFallback || detail.title
     baselineCardTitle.value = cardTitle.value
     cardRevision.value = detail.revision
+    isSaveAsDraft.value = false
+    clearSaveAsDraftSource()
     resetRawTrackStages()
   }
 
@@ -607,6 +632,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     selectedCardId.value = cardId
     isNewPlaylist.value = false
+    isSaveAsDraft.value = false
+    clearSaveAsDraftSource()
     createOutcomeUncertain.value = false
   }
 
@@ -716,6 +743,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
           playlist: snapshot.playlist,
           baselinePlaylist: snapshot.baseline,
           cardTitle: snapshot.cardTitle,
+          saveAsSourceReference: snapshot.saveAsSourceReference,
+          saveAsMutations: snapshot.saveAsMutations,
           acknowledgeCapacityRisk: options?.acknowledgeCapacityRisk === true,
         },
       },
@@ -804,7 +833,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     if (isNewPlaylist.value && currentCardSaving) return
 
-    if (isEditing.value && isDirty.value && !currentCardSaving) {
+    if (shouldConfirmEditorNavigation(
+      isEditing.value,
+      isDirty.value,
+      currentCardSaving,
+    )) {
       const confirmed = window.confirm(
         'You have unsaved card changes. Switch cards anyway?',
       )
@@ -819,6 +852,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     errorMessage.value = ''
     createOutcomeUncertain.value = false
     isNewPlaylist.value = false
+    isSaveAsDraft.value = false
+    clearSaveAsDraftSource()
     selectedCardId.value = card.cardId
     cardTitle.value = card.title
 
@@ -875,7 +910,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     const currentSaveKey = selectedSaveKey.value
     const currentCardSaving = currentSaveKey ? isSaveActive(currentSaveKey) : false
-    if (isEditing.value && isDirty.value && !currentCardSaving) {
+    if (shouldConfirmEditorNavigation(
+      isEditing.value,
+      isDirty.value,
+      currentCardSaving,
+    )) {
       const confirmed = window.confirm(
         'You have unsaved card changes. Start a new playlist anyway?',
       )
@@ -884,6 +923,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     selectedCardId.value = null
     isNewPlaylist.value = true
+    isSaveAsDraft.value = false
+    clearSaveAsDraftSource()
     cardTitle.value = ''
     baselineCardTitle.value = ''
     cardRevision.value = ''
@@ -897,13 +938,83 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     return true
   }
 
+  function saveAsCard(): boolean {
+    if (
+      !selectedCardId.value
+      || isNewPlaylist.value
+      || isPodcast.value
+      || loading.value
+      || isPlaylistLocked.value
+    ) return false
+    if (!originalCardDetail.value?.saveAsSource) {
+      errorMessage.value = 'Reload this card before creating a copy.'
+      return false
+    }
+    if (hasRawStructuralConflict.value) {
+      errorMessage.value = RAW_STRUCTURAL_MIX_MESSAGE
+      return false
+    }
+
+    const mutations: CardMutation[] = []
+    if (titleDirty.value) {
+      mutations.push({
+        kind: 'rename-card',
+        expectedTitle: baselineCardTitle.value,
+        title: cardTitle.value.trim(),
+      })
+    }
+    mutations.push(...trackTitleAssignments.value.map(({ mutation }) => mutation))
+    mutations.push(...toTrackIconMutations(trackIconAssignments.value))
+    mutations.push(...trackRemovalAssignments.value.map(({ mutation }) => mutation))
+
+    try {
+      const draft = prepareSaveAsDraft({
+        source: originalCardDetail.value.saveAsSource,
+        sourceReference: {
+          cardId: originalCardDetail.value.cardId,
+          expectedRevision: originalCardDetail.value.revision,
+        },
+        title: cardTitle.value,
+        playlist: playlist.value,
+        mutations,
+      })
+
+      selectedCardId.value = null
+      isNewPlaylist.value = true
+      isSaveAsDraft.value = true
+      cardTitle.value = draft.title
+      baselineCardTitle.value = draft.title
+      cardRevision.value = ''
+      isPodcast.value = false
+      playlist.value = draft.playlist
+      baselinePlaylist.value = draft.baseline
+      saveAsSourceSnapshot.value = draft.source
+      saveAsSourceReference.value = draft.sourceReference
+      saveAsMutations.value = draft.mutations
+      resetRawTrackStages()
+      originalCardDetail.value = null
+      errorMessage.value = ''
+      createOutcomeUncertain.value = false
+      return true
+    }
+    catch (err: unknown) {
+      const e = err as { message?: string }
+      errorMessage.value = e.message ?? 'Could not prepare this card for Save As.'
+      return false
+    }
+  }
+
   function clearSelection(force = false): boolean {
     if (isNavigationLocked.value) return false
 
     const currentSaveKey = selectedSaveKey.value
     const currentCardSaving = currentSaveKey ? isSaveActive(currentSaveKey) : false
 
-    if (!force && isDirty.value && !currentCardSaving) {
+    if (!force && shouldConfirmEditorNavigation(
+      isEditing.value,
+      isDirty.value,
+      currentCardSaving,
+    )) {
       const confirmed = window.confirm(
         'You have unsaved card changes. Clear selection anyway?',
       )
@@ -912,6 +1023,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     selectedCardId.value = null
     isNewPlaylist.value = false
+    isSaveAsDraft.value = false
+    clearSaveAsDraftSource()
     cardTitle.value = ''
     baselineCardTitle.value = ''
     cardRevision.value = ''
@@ -929,7 +1042,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     if (!isDirty.value || isPlaylistLocked.value) return
     playlist.value = clonePlaylist(baselinePlaylist.value)
     resetRawTrackStages()
-    cardTitle.value = resetCardTitle(isNewPlaylist.value, baselineCardTitle.value)
+    cardTitle.value = resetEditorTitle(
+      isNewPlaylist.value,
+      isSaveAsDraft.value,
+      baselineCardTitle.value,
+    )
     errorMessage.value = ''
     if (isNewPlaylist.value) createOutcomeUncertain.value = false
   }
@@ -981,7 +1098,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       || createOutcomeUncertain.value
     ) return
 
-    const validationError = getStandalonePlaylistValidationError(cardTitle.value, playlist.value)
+    const validationError = getStandalonePlaylistValidationError(cardTitle.value, playlist.value, {
+      isSaveAsDraft: isSaveAsDraft.value,
+    })
     if (validationError) {
       errorMessage.value = validationError
       playEvent('saveError')
@@ -1004,6 +1123,13 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       cardTitle: cardTitle.value.trim(),
       baselineCardTitle: '',
       cardRevision: '',
+      ...(saveAsSourceSnapshot.value && saveAsSourceReference.value
+        ? {
+            saveAsSource: saveAsSourceSnapshot.value,
+            saveAsSourceReference: saveAsSourceReference.value,
+            saveAsMutations: saveAsMutations.value,
+          }
+        : {}),
     }
 
     try {
@@ -1163,6 +1289,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   return {
     selectedCardId,
     isNewPlaylist,
+    isSaveAsDraft,
     cardTitle,
     playlist,
     isEditing,
@@ -1193,6 +1320,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     getEffectiveTrackIcon,
     isCardSaving,
     startNewPlaylist,
+    saveAsCard,
     selectCard,
     clearSelection,
     resetChanges,

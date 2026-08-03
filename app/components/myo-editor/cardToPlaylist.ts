@@ -1,11 +1,11 @@
 import type { PlaylistTrack } from '~/components/playlist/types'
 import { buildManifestLookup, parseProvenance } from './parseProvenance'
-import type { ClassifiedTrack, TrackSource, YotoCardDetail, YotoTrack } from './types'
-import { extractYoutubeIdFromUrl } from './youtubeUrl'
+import type { ClassifiedTrack, TrackSource, YotoCardDetail } from './types'
 import { playlistRowId } from '#shared/myo-editor/playlistRowId'
 import { flattenCardTracks } from '#shared/myo-editor/trackLookup'
 import { toYotoTrackReuseSnapshot } from '#shared/myo-editor/yotoTrackPayload'
 import { loadedTrackTitle } from '#shared/myo-editor/rawTrackManagement'
+import { classifyYotoTrack } from '#shared/myo-editor/classifyYotoTrack'
 
 interface YoutubeVideoApiItem {
   id: string
@@ -25,48 +25,6 @@ const SOURCE_LABELS: Record<TrackSource, string> = {
 
 export function yotoTrackId(chapterKey: string, trackKey: string): string {
   return `yoto:${JSON.stringify([chapterKey, trackKey])}`
-}
-
-function classifyTrack(
-  track: YotoTrack,
-  manifestLookup: Map<string, { youtubeId: string; title: string }>,
-): ClassifiedTrack {
-  const manifestEntry = manifestLookup.get(`${track.chapterKey}:${track.trackKey}`)
-  if (manifestEntry) {
-    return {
-      ...track,
-      source: 'app-youtube',
-      youtubeId: manifestEntry.youtubeId,
-    }
-  }
-
-  const youtubeId = extractYoutubeIdFromUrl(track.trackUrl)
-  if (youtubeId) {
-    return {
-      ...track,
-      source: 'youtube-url',
-      youtubeId,
-    }
-  }
-
-  if (track.trackUrl?.startsWith('yoto:#')) {
-    return {
-      ...track,
-      source: 'yoto-upload',
-    }
-  }
-
-  if (track.type === 'stream') {
-    return {
-      ...track,
-      source: 'stream',
-    }
-  }
-
-  return {
-    ...track,
-    source: 'unknown',
-  }
 }
 
 function formatDurationMinutes(seconds: number): string {
@@ -177,7 +135,7 @@ export async function cardToPlaylist(detail: YotoCardDetail): Promise<CardToPlay
   const manifest = parseProvenance(detail.metadataNote, detail.contentVersion)
   const manifestLookup = buildManifestLookup(manifest)
   const classified = flattenCardTracks(detail).map(track =>
-    classifyTrack(track, manifestLookup),
+    classifyYotoTrack(track, manifestLookup),
   )
   const hydrated = await hydrateAppYoutubeTracks(classified)
 

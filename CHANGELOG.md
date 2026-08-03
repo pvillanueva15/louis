@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Lossless Save As for existing Yoto playlists and MYO cards, creating detached duplicates that reuse source media.
 - Lossless track rename and removal for existing MYO cards, with one-step Undo for removals.
 - Lossless per-track icon assignment for existing MYO cards, including personal-library selection, chapter inheritance, batching, and Reset support.
 - Personal Yoto icon browsing and a local 16×16 crop/preview editor with reusable icon uploads.

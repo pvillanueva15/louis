@@ -9,9 +9,11 @@ import {
   isPlaylistEditorActive,
   notifyConfirmedCardUpdated,
   notifyConfirmedPlaylistCreated,
+  resetEditorTitle,
   resolveClientSaveTarget,
   resolveSavedCardId,
   shouldBlockEditorNavigation,
+  shouldConfirmEditorNavigation,
   shouldWarnBeforeUnload,
 } from './standalonePlaylist.ts'
 
@@ -81,6 +83,62 @@ describe('standalone playlist drafts', () => {
       }]),
       'New playlists can only include supported YouTube tracks.',
     )
+  })
+
+  it('allows detached source tracks only for a Save As create draft', () => {
+    const yotoTrack = {
+      ...youtubeTrack(),
+      source: 'yoto-upload' as const,
+    }
+    assert.match(
+      getStandalonePlaylistValidationError('Copy', [yotoTrack]) ?? '',
+      /only include supported YouTube tracks/,
+    )
+    assert.equal(
+      getStandalonePlaylistValidationError('Copy', [yotoTrack], {
+        isSaveAsDraft: true,
+      }),
+      null,
+    )
+    assert.match(
+      getStandalonePlaylistValidationError('Copy', [], {
+        isSaveAsDraft: true,
+      }) ?? '',
+      /must keep at least one track/,
+    )
+  })
+
+  it('keeps the local raw draft separate from the server source reference and commands', () => {
+    const snapshot = {
+      playlist: [youtubeTrack()],
+      baseline: [youtubeTrack()],
+      cardTitle: 'Copy of Source',
+      baselineCardTitle: 'Copy of Source',
+      cardRevision: '',
+      saveAsSource: {
+        title: 'Source',
+        content: { chapters: [] },
+      },
+      saveAsSourceReference: {
+        cardId: 'source-card',
+        expectedRevision: 'revision-1',
+      },
+      saveAsMutations: [{
+        kind: 'rename-card' as const,
+        expectedTitle: 'Source',
+        title: 'Renamed source',
+      }],
+    }
+    const cloned = cloneCardSaveSnapshot(snapshot)
+    cloned.saveAsSource!.content.chapters = ['local-only']
+    cloned.saveAsSourceReference!.cardId = 'changed-clone'
+    const clonedMutation = cloned.saveAsMutations![0]!
+    assert.equal(clonedMutation.kind, 'rename-card')
+    if (clonedMutation.kind === 'rename-card') clonedMutation.title = 'Changed clone'
+
+    assert.deepEqual(snapshot.saveAsSource.content.chapters, [])
+    assert.equal(snapshot.saveAsSourceReference.cardId, 'source-card')
+    assert.equal(snapshot.saveAsMutations[0]!.title, 'Renamed source')
   })
 
   it('promotes a create using the returned ID and leaves update identity unchanged', () => {
@@ -193,6 +251,28 @@ describe('standalone playlist drafts', () => {
       shouldBlockEditorNavigation(false, {
         backgroundSaveActive: false,
         cardMutationActive: true,
+      }),
+      true,
+    )
+  })
+
+  it('treats a Save As copy as an unsaved draft for Reset, navigation, and unload', () => {
+    assert.equal(
+      resetEditorTitle(true, true, 'Copy of Source title'),
+      'Copy of Source title',
+    )
+    assert.equal(shouldConfirmEditorNavigation(true, true, false), true)
+    assert.equal(
+      shouldWarnBeforeUnload(true, {
+        backgroundSaveActive: false,
+        cardMutationActive: false,
+      }),
+      true,
+    )
+    assert.equal(
+      shouldBlockEditorNavigation(true, {
+        backgroundSaveActive: true,
+        cardMutationActive: false,
       }),
       true,
     )

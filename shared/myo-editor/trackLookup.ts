@@ -1,5 +1,5 @@
 import type { PlaylistTrack, YotoCardDetail, YotoTrackDetail } from './types'
-import { buildManifestLookup, parseProvenance } from './parseProvenance'
+import { buildManifestLookup, manifestLookupKey, parseProvenance } from './parseProvenance'
 
 export function flattenCardTracks(detail: YotoCardDetail): YotoTrackDetail[] {
   const tracks: YotoTrackDetail[] = []
@@ -40,7 +40,7 @@ export function findOriginalTrackByYoutubeId(
       if (track.chapterKey !== chapterKey || track.trackKey !== trackKey) continue
     }
 
-    const entry = lookup.get(`${track.chapterKey}:${track.trackKey}`)
+    const entry = lookup.get(manifestLookupKey(track.chapterKey, track.trackKey))
     if (entry?.youtubeId === youtubeId) {
       return track
     }

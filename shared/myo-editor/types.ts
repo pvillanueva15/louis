@@ -64,6 +64,19 @@ export interface YotoCardMetadata {
   [key: string]: unknown
 }
 
+/** Detached, create-safe card fields used by a local Save As draft. */
+export interface SaveAsSourceSnapshot {
+  title: string
+  content: Record<string, unknown>
+  metadata?: YotoCardMetadata
+}
+
+/** Server-verifiable provenance for a detached Save As draft. */
+export interface SaveAsSourceReference {
+  cardId: string
+  expectedRevision: string
+}
+
 export interface YotoCardDetail {
   cardId: string
   title: string
@@ -73,6 +86,7 @@ export interface YotoCardDetail {
   feedUrl: string | null
   metadata: YotoCardMetadata | null
   chapters: YotoChapterDetail[]
+  saveAsSource: SaveAsSourceSnapshot
 }
 
 export interface PlaylistTrack {
@@ -123,6 +137,7 @@ export type SaveTrackAction =
   | { kind: 'extract-youtube'; youtubeId: string; playlistIndex: number }
   | { kind: 'reuse-yoto'; snapshot: YotoTrackReuseSnapshot; playlistIndex: number }
   | { kind: 'passthrough-stream'; snapshot: YotoTrackReuseSnapshot; playlistIndex: number }
+  | { kind: 'reuse-source'; playlistIndex: number }
   | { kind: 'unsupported'; reason: string; playlistIndex: number }
 
 export interface SavePlan {
