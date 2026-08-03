@@ -8,6 +8,7 @@ import {
   cardMutationStatusCode,
   classifyExistingCardChanges,
   getCardTitleValidationError,
+  getTrackTitleValidationError,
   mapRawIconState,
   parseMutateCardRequest,
   resetCardTitle,
@@ -27,6 +28,190 @@ describe('raw icon state mapping', () => {
       kind: 'present',
       value: 'yoto:#icon',
     })
+  })
+})
+
+describe('track title and removal request contract', () => {
+  const rename = (index: number, overrides: Record<string, unknown> = {}) => ({
+    kind: 'rename-track',
+    chapterKey: ` chapter-${index} `,
+    trackKey: ` track-${index} `,
+    expectedTitle: `Old ${index}`,
+    title: ` New ${index} `,
+    ...overrides,
+  })
+
+  it('trims titles at the 1/100 boundary while preserving opaque keys exactly', () => {
+    assert.equal(getTrackTitleValidationError('x'), null)
+    assert.equal(getTrackTitleValidationError('x'.repeat(100)), null)
+    assert.match(getTrackTitleValidationError('x'.repeat(101)) ?? '', /100/)
+
+    const parsed = parseMutateCardRequest({
+      expectedRevision: 'revision-1',
+      mutations: [rename(1)],
+    })
+    assert.deepEqual(parsed.mutations[0], {
+      kind: 'rename-track',
+      chapterKey: ' chapter-1 ',
+      trackKey: ' track-1 ',
+      expectedTitle: 'Old 1',
+      title: 'New 1',
+    })
+    for (const title of [' ', 'x'.repeat(101)]) {
+      assert.throws(() => parseMutateCardRequest({
+        expectedRevision: 'revision-1',
+        mutations: [rename(1, { title })],
+      }))
+    }
+  })
+
+  it('caps 100 distinct stable targets across track action kinds', () => {
+    assert.equal(parseMutateCardRequest({
+      expectedRevision: 'revision-1',
+      mutations: Array.from({ length: 100 }, (_, index) => rename(index)),
+    }).mutations.length, 100)
+    assert.throws(() => parseMutateCardRequest({
+      expectedRevision: 'revision-1',
+      mutations: Array.from({ length: 101 }, (_, index) => rename(index)),
+    }), /100/)
+  })
+
+  it('allows rename plus icon but rejects duplicate and remove cross-actions', () => {
+    const icon = {
+      kind: 'set-track-icon',
+      chapterKey: ' chapter-1 ',
+      trackKey: ' track-1 ',
+      expectedChapterIcon: { kind: 'absent' },
+      expectedTrackIcon: { kind: 'absent' },
+      mode: 'inherit',
+    }
+    assert.equal(parseMutateCardRequest({
+      expectedRevision: 'revision-1',
+      mutations: [rename(1), icon],
+    }).mutations.length, 2)
+    assert.throws(() => parseMutateCardRequest({
+      expectedRevision: 'revision-1',
+      mutations: [rename(1), rename(1)],
+    }), /unique/)
+    assert.throws(() => parseMutateCardRequest({
+      expectedRevision: 'revision-1',
+      mutations: [icon, icon],
+    }), /unique/)
+    for (const mutations of [
+      [rename(1), { kind: 'remove-track', chapterKey: ' chapter-1 ', trackKey: ' track-1 ', expectedTitle: 'Old 1' }],
+      [icon, { kind: 'remove-track', chapterKey: ' chapter-1 ', trackKey: ' track-1 ', expectedTitle: 'Old 1' }],
+    ]) {
+      assert.throws(() => parseMutateCardRequest({ expectedRevision: 'revision-1', mutations }), /removed track/)
+    }
+  })
+})
+
+describe('atomic track mutation application', () => {
+  function card() {
+    return {
+      cardId: 'card-1',
+      title: 'Card title',
+      content: {
+        version: 'keep-version',
+        chapters: [
+          {
+            key: 'matching',
+            title: 'Alpha',
+            tracks: [{ key: 'a', title: 'Alpha', trackUrl: 'yoto:#upload-a', uid: 'uid-a', format: 'aac', duration: 12, fileSize: 34, channels: 'stereo', stream: { keep: true }, unknown: 'a' }],
+          },
+          {
+            key: 'divergent',
+            title: 'Chapter B',
+            tracks: [{ key: 'b', title: 'Beta', trackUrl: 'yoto:#upload-b', unknown: 'b' }],
+          },
+          {
+            key: 'multi',
+            title: 'Chapter C',
+            display: { icon16x16: null, keep: true },
+            tracks: [
+              { key: 'c', title: 'Gamma', display: { icon16x16: 'yoto:#old', keep: true }, unknown: 'c' },
+              { key: 'd', title: 'Delta', unknown: 'd' },
+            ],
+          },
+          {
+            key: 'remove-chapter',
+            title: 'Epsilon',
+            tracks: [{ key: 'e', title: 'Epsilon', unknown: 'e' }],
+          },
+        ],
+        grouping: { keep: ['all'] },
+        unknownContent: true,
+      },
+      metadata: {
+        title: 'Card title',
+        note: 'byte-for-byte\n  keep',
+        media: { uploaded: { keep: true } },
+        cover: { imageL: 'keep' },
+        feed: { keep: true },
+      },
+      streams: [{ keep: true }],
+      unknownTopLevel: { keep: true },
+    }
+  }
+
+  it('applies canonical rename, icon, and removal phases using original chapter rules', () => {
+    const original = card()
+    const mediaId = 'b'.repeat(43)
+    const mutated = applyCardMutations(original, [
+      { kind: 'remove-track', chapterKey: 'multi', trackKey: 'd', expectedTitle: 'Delta' },
+      { kind: 'rename-track', chapterKey: 'multi', trackKey: 'c', expectedTitle: 'Gamma', title: 'Gamma new' },
+      { kind: 'rename-card', expectedTitle: 'Card title', title: 'Card new' },
+      { kind: 'rename-track', chapterKey: 'matching', trackKey: 'a', expectedTitle: 'Alpha', title: 'Alpha new' },
+      { kind: 'set-track-icon', chapterKey: 'multi', trackKey: 'c', expectedChapterIcon: { kind: 'present', value: null }, expectedTrackIcon: { kind: 'present', value: 'yoto:#old' }, mode: 'icon', mediaId },
+      { kind: 'rename-track', chapterKey: 'divergent', trackKey: 'b', expectedTitle: 'Beta', title: 'Beta new' },
+      { kind: 'remove-track', chapterKey: 'remove-chapter', trackKey: 'e', expectedTitle: 'Epsilon' },
+    ]) as ReturnType<typeof card>
+
+    assert.equal(mutated.title, 'Card new')
+    assert.equal(mutated.metadata.title, 'Card new')
+    assert.equal(mutated.content.chapters[0]!.title, 'Alpha new')
+    assert.equal(mutated.content.chapters[0]!.tracks[0]!.title, 'Alpha new')
+    assert.equal(mutated.content.chapters[1]!.title, 'Chapter B')
+    assert.equal(mutated.content.chapters[1]!.tracks[0]!.title, 'Beta new')
+    assert.equal(mutated.content.chapters[2]!.title, 'Chapter C')
+    assert.deepEqual(mutated.content.chapters[2]!.tracks.map(track => track.key), ['c'])
+    assert.equal(mutated.content.chapters[2]!.tracks[0]!.display?.icon16x16, `yoto:#${mediaId}`)
+    assert.deepEqual(mutated.content.chapters.map(chapter => chapter.key), ['matching', 'divergent', 'multi'])
+    assert.equal(mutated.metadata.note, original.metadata.note)
+    assert.deepEqual(mutated.metadata.media, original.metadata.media)
+    assert.deepEqual(mutated.content.grouping, original.content.grouping)
+    assert.deepEqual(mutated.streams, original.streams)
+    assert.deepEqual(mutated.unknownTopLevel, original.unknownTopLevel)
+    assert.equal(mutated.content.chapters[0]!.tracks[0]!.trackUrl, 'yoto:#upload-a')
+    assert.equal(mutated.content.chapters[0]!.tracks[0]!.uid, 'uid-a')
+  })
+
+  it('removes multiple positions from highest index while preserving sibling order', () => {
+    const original = card()
+    original.content.chapters[2]!.tracks.push(
+      { key: 'f', title: 'Phi', unknown: 'f' },
+      { key: 'g', title: 'Gamma 2', unknown: 'g' },
+    )
+    const mutated = applyCardMutations(original, [
+      { kind: 'remove-track', chapterKey: 'multi', trackKey: 'c', expectedTitle: 'Gamma' },
+      { kind: 'remove-track', chapterKey: 'multi', trackKey: 'f', expectedTitle: 'Phi' },
+    ]) as ReturnType<typeof card>
+    assert.deepEqual(mutated.content.chapters[2]!.tracks.map(track => track.key), ['d', 'g'])
+  })
+
+  it('rejects drift, missing or ambiguous targets, malformed cards, podcasts, and final-track removal', () => {
+    const original = card()
+    const rename = { kind: 'rename-track' as const, chapterKey: 'matching', trackKey: 'a', expectedTitle: 'stale', title: 'New' }
+    assert.throws(() => applyCardMutations(original, [rename]), /changed after it was loaded/)
+    assert.throws(() => applyCardMutations(original, [{ ...rename, trackKey: 'missing', expectedTitle: 'Alpha' }]), /no longer exists/)
+    const ambiguous = card()
+    ambiguous.content.chapters[0]!.tracks.push({ ...ambiguous.content.chapters[0]!.tracks[0]! })
+    assert.throws(() => applyCardMutations(ambiguous, [{ ...rename, expectedTitle: 'Alpha' }]), /ambiguous/)
+    assert.throws(() => applyCardMutations({ ...original, content: { chapters: null } }, [rename]), /chapters are malformed/)
+    assert.throws(() => applyCardMutations({ ...original, metadata: { ...original.metadata, feedUrl: 'https://example.com/feed' } }, [rename]), /Podcast/)
+    const only = card()
+    only.content.chapters = [{ key: 'only', title: 'Only', tracks: [{ key: 'only', title: 'Only', unknown: 'keep' }] }]
+    assert.throws(() => applyCardMutations(only, [{ kind: 'remove-track', chapterKey: 'only', trackKey: 'only', expectedTitle: 'Only' }]), /keep at least one/)
   })
 })
 
@@ -95,6 +280,17 @@ describe('existing card title state', () => {
         iconDirty: true,
         isDirty: true,
         rawMutationOnly: false,
+        titleOnly: false,
+      },
+    )
+    assert.deepEqual(
+      classifyExistingCardChanges('Bedtime', 'Bedtime', false, false, true, true),
+      {
+        titleDirty: false,
+        playlistDirty: false,
+        iconDirty: false,
+        isDirty: true,
+        rawMutationOnly: true,
         titleOnly: false,
       },
     )

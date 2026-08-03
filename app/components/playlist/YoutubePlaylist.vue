@@ -50,6 +50,10 @@ const {
   isNewPlaylist,
   isPodcast,
   stageTrackIcon,
+  stageTrackTitle,
+  removeTrack: stageTrackRemoval,
+  canManageRawTrack,
+  structuralEditsBlocked,
   getEffectiveTrackIcon,
   clearSelection,
 } = editor
@@ -75,6 +79,7 @@ function showTrackIconControl(track: PlaylistTrack): boolean {
     selectedCardId.value
     && !isNewPlaylist.value
     && !isPodcast.value
+    && canManageRawTrack(track)
     && canAssignTrackIcon(track),
   )
 }
@@ -374,14 +379,15 @@ const { isDropTarget } = useDroppable({
     () => isDropzoneLocked.value
       || isCardLoadingActive.value
       || isYotoPlaylistBlocked.value
+      || structuralEditsBlocked.value
       || !isEditing.value,
   ),
 })
 
-function removeTrack(id: string) {
+function removeTrack(track: PlaylistTrack) {
   if (isDropzoneLocked.value || isCardLoadingActive.value || isYotoPlaylistBlocked.value) return
   playEvent('removeTrack')
-  playlist.value = playlist.value.filter(track => track.id !== id)
+  stageTrackRemoval(track)
 }
 
 function isVisibleInScrollContainer(item: HTMLElement, container: HTMLElement) {
@@ -442,9 +448,12 @@ watch(() => props.scrollToVideoId, async (id) => {
           :track="track"
           :index="index"
           :locked="isDropzoneLocked || isCardLoadingActive || isYotoPlaylistBlocked"
+          :reorder-locked="structuralEditsBlocked"
+          :title-enabled="canManageRawTrack(track)"
           :icon-enabled="showTrackIconControl(track)"
           :effective-icon="displayedEffectiveTrackIcon(track)"
           @remove="removeTrack"
+          @rename="stageTrackTitle"
           @choose-icon="openTrackIconPicker"
         />
       </TransitionGroup>

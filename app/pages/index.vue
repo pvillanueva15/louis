@@ -130,6 +130,7 @@ const {
   isPlaylistLocked,
   isPodcast,
   cardTitle,
+  prepareStructuralEdit,
 } = editor
 const { connected, status } = yoto
 
@@ -210,6 +211,7 @@ function onDragStart(event: DragStartEvent) {
 
   const sourceData = getItemData(source)
   if (sourceData?.type !== 'playlist') return
+  if (!prepareStructuralEdit()) return
 
   lastReorderIndex = source.index
 }
@@ -259,6 +261,10 @@ function onDragEnd(event: DragEndEvent) {
 
   if (sourceData?.type === 'result') {
     if (!isEditing.value) {
+      playEvent('disabled')
+      return
+    }
+    if (!prepareStructuralEdit()) {
       playEvent('disabled')
       return
     }
