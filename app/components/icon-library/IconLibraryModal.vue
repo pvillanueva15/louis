@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import IconStaticEditor from './IconStaticEditor.vue'
+import CommunityIconSearch from './CommunityIconSearch.vue'
 import { useIconLibrary } from './useIconLibrary'
-import type { PersonalIcon } from '#shared/yoto/iconContract'
+import type { PersonalIcon, PersonalIconUploadResponse } from '#shared/yoto/iconContract'
 
 const props = withDefaults(defineProps<{
   selectionMode?: boolean
@@ -28,7 +29,8 @@ const {
   recoveryRequired,
   load,
   upload,
-  resetSessionMessage,
+  acceptImportedIcon,
+  openSession,
 } = useIconLibrary()
 
 const dialog = ref<HTMLElement | null>(null)
@@ -36,11 +38,15 @@ const closeButton = ref<HTMLButtonElement | null>(null)
 const makeIconButton = ref<HTMLButtonElement | null>(null)
 const retryButton = ref<HTMLButtonElement | null>(null)
 const editor = ref<{ focusInitial: () => void } | null>(null)
+const communitySearch = ref<{ reset: () => void } | null>(null)
 const editing = ref(false)
+const activeTab = ref<'my' | 'community'>('my')
+const communityBusy = ref(false)
 const headingId = 'icon-library-heading'
 let restoreFocusTo: HTMLElement | null = null
 
 const uploadBusy = computed(() => uploadStatus.value === 'uploading')
+const modalBusy = computed(() => uploadBusy.value || communityBusy.value)
 const uploadBlocked = computed(() => uploadBusy.value || recoveryRequired.value)
 
 async function showEditor() {
@@ -65,7 +71,7 @@ async function retryLoad() {
 }
 
 function close() {
-  if (uploadBusy.value) return
+  if (modalBusy.value) return
   open.value = false
 }
 
@@ -120,14 +126,34 @@ async function onUpload(blob: Blob, filename: string) {
   else makeIconButton.value?.focus()
 }
 
+async function onCommunityAccepted(response: PersonalIconUploadResponse) {
+  const refreshed = await acceptImportedIcon(response)
+  if (!refreshed) {
+    if (recoveryRequired.value) {
+      activeTab.value = 'my'
+      await nextTick()
+      retryButton.value?.focus()
+    }
+    return
+  }
+  if (props.selectionMode) {
+    emit('select', response.icon)
+    close()
+    return
+  }
+  activeTab.value = 'my'
+}
+
 watch(open, async (isOpen) => {
   if (isOpen) {
     restoreFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
     editing.value = false
-    resetSessionMessage()
+    activeTab.value = 'my'
+    communityBusy.value = false
+    communitySearch.value?.reset()
     await nextTick()
     closeButton.value?.focus()
-    await load()
+    await openSession()
     return
   }
 
@@ -149,7 +175,7 @@ watch(open, async (isOpen) => {
         role="dialog"
         aria-modal="true"
         :aria-labelledby="headingId"
-        :aria-busy="uploadBusy"
+        :aria-busy="modalBusy"
       >
         <header class="icon-library__header border-maru-bottom">
           <div>
@@ -162,7 +188,7 @@ watch(open, async (isOpen) => {
             ref="closeButton"
             type="button"
             class="icon-library__close"
-            :disabled="uploadBusy"
+            :disabled="modalBusy"
             :aria-label="selectionMode ? 'Close track icon chooser' : 'Close My Icons'"
             @click="close"
           >
@@ -180,6 +206,30 @@ watch(open, async (isOpen) => {
           />
 
           <template v-else>
+            <div class="icon-library__tabs" role="tablist" aria-label="Icon library source">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="activeTab === 'my'"
+                :disabled="modalBusy"
+                :class="{ 'icon-library__tab--active': activeTab === 'my' }"
+                @click="activeTab = 'my'"
+              >
+                My Icons
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="activeTab === 'community'"
+                :disabled="modalBusy"
+                :class="{ 'icon-library__tab--active': activeTab === 'community' }"
+                @click="activeTab = 'community'"
+              >
+                Community — Experimental
+              </button>
+            </div>
+
+            <template v-if="activeTab === 'my'">
             <button
               v-if="selectionMode"
               type="button"
@@ -261,9 +311,19 @@ watch(open, async (isOpen) => {
                 <span v-if="icon.mediaId === newestMediaId" class="icon-library__new-label">Just added</span>
               </li>
             </ul>
+            </template>
+
+            <CommunityIconSearch
+              v-else
+              ref="communitySearch"
+              :busy="uploadBlocked"
+              :selection-mode="selectionMode"
+              @accepted="onCommunityAccepted"
+              @busy-change="communityBusy = $event"
+            />
           </template>
 
-          <p v-if="errorMessage && (editing || status !== 'error')" class="icon-library__error" role="alert">{{ errorMessage }}</p>
+          <p v-if="errorMessage && (editing || activeTab === 'community' || status !== 'error')" class="icon-library__error" role="alert">{{ errorMessage }}</p>
         </div>
 
         <p class="sr-only" aria-live="polite">{{ announcement }}</p>
