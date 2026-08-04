@@ -11,10 +11,19 @@ import IconLibraryModal from '~/components/icon-library/IconLibraryModal.vue'
 import { useIconLibrary } from '~/components/icon-library/useIconLibrary'
 import type { PersonalIcon } from '#shared/yoto/iconContract'
 import {
+  advanceRapidTrackIconAssignment,
+  canStageRapidTrackIconSelection,
   canAssignTrackIcon,
+  eligibleTrackIconTargets,
+  moveTrackIconTarget,
+  rehomeTrackIconTarget,
   resolveTrackIconPreview,
+  resolveTrackIconTarget,
   shouldInvalidatePersonalIconCache,
   shouldLoadTrackIconPreviews,
+  trackIconTargetIndex,
+  type TrackIconSelection,
+  type TrackIconTarget,
 } from '#shared/myo-editor/trackIconAssignment'
 import type { PlaylistTrack } from './types'
 import {
@@ -58,8 +67,11 @@ const {
   clearSelection,
 } = editor
 
-const iconPickerTrack = ref<PlaylistTrack | null>(null)
+const singleIconPickerTrack = ref<PlaylistTrack | null>(null)
 const iconPickerOpen = ref(false)
+const rapidIconAssignment = ref(false)
+const rapidIconTarget = ref<TrackIconTarget | null>(null)
+const rapidAssignmentComplete = ref(false)
 const {
   icons: personalIconsForPreview,
   status: iconPreviewStatus,
@@ -67,9 +79,23 @@ const {
   invalidateAccountCache,
 } = useIconLibrary()
 
+const rapidIconTargets = computed(() =>
+  eligibleTrackIconTargets(playlist.value.filter(showTrackIconControl)),
+)
+
+const rapidIconTargetIndex = computed(() =>
+  trackIconTargetIndex(rapidIconTargets.value, rapidIconTarget.value),
+)
+
+const iconPickerTrack = computed(() => rapidIconAssignment.value
+  ? resolveTrackIconTarget(playlist.value, rapidIconTarget.value)
+  : singleIconPickerTrack.value,
+)
+
 const selectedTrackMediaId = computed(() => {
-  if (!iconPickerTrack.value) return null
-  const effective = getEffectiveTrackIcon(iconPickerTrack.value)
+  const track = iconPickerTrack.value
+  if (!track) return null
+  const effective = getEffectiveTrackIcon(track)
   if (effective.source !== 'track' || !effective.reference?.startsWith('yoto:#')) return null
   return effective.reference.slice('yoto:#'.length)
 })
@@ -98,13 +124,76 @@ function openTrackIconPicker(track: PlaylistTrack) {
     || isPlaylistLocked.value
     || isYotoPlaylistBlocked.value
   ) return
-  iconPickerTrack.value = track
+  rapidIconAssignment.value = false
+  rapidIconTarget.value = null
+  rapidAssignmentComplete.value = false
+  singleIconPickerTrack.value = track
   iconPickerOpen.value = true
 }
 
+function openRapidIconAssignment() {
+  if (
+    rapidIconTargets.value.length === 0
+    || loading.value
+    || isPlaylistLocked.value
+    || isYotoPlaylistBlocked.value
+  ) return
+  singleIconPickerTrack.value = null
+  rapidIconAssignment.value = true
+  rapidIconTarget.value = rapidIconTargets.value[0]!
+  rapidAssignmentComplete.value = false
+  iconPickerOpen.value = true
+}
+
+function advanceRapidIconAssignment() {
+  if (!rapidIconAssignment.value) return
+  const next = advanceRapidTrackIconAssignment(
+    rapidIconTargets.value,
+    rapidIconTarget.value,
+  )
+  if (!next) return
+  rapidIconTarget.value = next.target
+  rapidAssignmentComplete.value = next.completed
+}
+
+function moveRapidIconAssignment(offset: -1 | 1) {
+  if (!rapidIconAssignment.value) return
+  rapidIconTarget.value = moveTrackIconTarget(
+    rapidIconTargets.value,
+    rapidIconTarget.value,
+    offset,
+  )
+  rapidAssignmentComplete.value = false
+}
+
+function applyTrackIconSelection(selection: TrackIconSelection) {
+  const track = iconPickerTrack.value
+  if (!track) return
+  if (!rapidIconAssignment.value) {
+    stageTrackIcon(track, selection)
+    return
+  }
+
+  const accepted = canStageRapidTrackIconSelection(
+    rapidIconTargets.value,
+    rapidIconTarget.value,
+    track,
+    {
+      loading: loading.value,
+      locked: isPlaylistLocked.value,
+      yotoBlocked: isYotoPlaylistBlocked.value,
+      manageable: showTrackIconControl(track),
+    },
+  )
+  if (!accepted) return
+
+  // The gate mirrors the editor's rejection conditions; baseline no-ops are accepted.
+  stageTrackIcon(track, selection)
+  advanceRapidIconAssignment()
+}
+
 function chooseTrackIcon(icon: PersonalIcon) {
-  if (!iconPickerTrack.value) return
-  stageTrackIcon(iconPickerTrack.value, {
+  applyTrackIconSelection({
     mode: 'icon',
     mediaId: icon.mediaId,
     previewUrl: icon.url,
@@ -112,12 +201,24 @@ function chooseTrackIcon(icon: PersonalIcon) {
 }
 
 function useChapterIcon() {
-  if (!iconPickerTrack.value) return
-  stageTrackIcon(iconPickerTrack.value, { mode: 'inherit' })
+  applyTrackIconSelection({ mode: 'inherit' })
 }
 
+watch(rapidIconTargets, (targets) => {
+  if (
+    !rapidIconAssignment.value
+    || trackIconTargetIndex(targets, rapidIconTarget.value) >= 0
+  ) return
+  rapidIconTarget.value = rehomeTrackIconTarget(targets, rapidIconTarget.value)
+  rapidAssignmentComplete.value = false
+})
+
 watch(iconPickerOpen, (open) => {
-  if (!open) iconPickerTrack.value = null
+  if (open) return
+  singleIconPickerTrack.value = null
+  rapidIconAssignment.value = false
+  rapidIconTarget.value = null
+  rapidAssignmentComplete.value = false
 })
 
 watch(
@@ -436,6 +537,21 @@ watch(() => props.scrollToVideoId, async (id) => {
       class="playlist-dropzone__scroll flex flex-col flex-1 min-h-0 overflow-y-auto p-3 sm:p-4"
       :class="isDropzoneLocked || isCardLoadingActive || isYotoPlaylistBlocked || !isEditing ? 'pointer-events-none select-none' : ''"
     >
+      <div
+        v-if="showPlaylistItems && rapidIconTargets.length > 0"
+        class="playlist-icon-assignment"
+      >
+        <button
+          type="button"
+          class="maru-button maru-button--sm bg-maru-yellow text-maru-black"
+          :disabled="loading || isDropzoneLocked || isCardLoadingActive || isYotoPlaylistBlocked"
+          @click="openRapidIconAssignment"
+        >
+          <span class="maru-button__label">Assign icons</span>
+        </button>
+        <span>{{ rapidIconTargets.length }} eligible {{ rapidIconTargets.length === 1 ? 'track' : 'tracks' }}</span>
+      </div>
+
       <TransitionGroup
         v-if="showPlaylistItems"
         tag="ol"
@@ -516,9 +632,18 @@ watch(() => props.scrollToVideoId, async (id) => {
     <IconLibraryModal
       v-model:open="iconPickerOpen"
       selection-mode
+      :rapid-assignment="rapidIconAssignment"
       :selected-media-id="selectedTrackMediaId"
+      :assignment-target-title="iconPickerTrack?.title ?? ''"
+      :assignment-target-position="rapidIconTargetIndex + 1"
+      :assignment-target-count="rapidIconTargets.length"
+      :assignment-complete="rapidAssignmentComplete"
+      :can-previous="rapidIconTargetIndex > 0"
+      :can-next="rapidIconTargetIndex >= 0 && rapidIconTargetIndex < rapidIconTargets.length - 1"
       @select="chooseTrackIcon"
       @inherit="useChapterIcon"
+      @previous="moveRapidIconAssignment(-1)"
+      @next="moveRapidIconAssignment(1)"
     />
   </div>
 </template>

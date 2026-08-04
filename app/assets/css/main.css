@@ -1409,6 +1409,25 @@ body {
   cursor: not-allowed;
 }
 
+.playlist-icon-assignment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem;
+  border: 3px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-blue-lighter);
+  box-shadow: 3px 3px 0 var(--color-maru-black);
+}
+
+.playlist-icon-assignment > span {
+  color: var(--color-maru-gray);
+  font-family: var(--font-maru-mono);
+  font-size: 0.9rem;
+}
+
 @media (max-width: 420px) {
   .playlist-track-icon {
     width: 36px;
@@ -3310,9 +3329,60 @@ body {
 }
 
 .icon-library__body {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0.9rem;
+}
+
+.icon-library__assignment {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 3px solid var(--color-maru-black);
+  background: var(--color-maru-blue-lighter);
+}
+
+.icon-library__assignment > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.icon-library__assignment-position {
+  font-family: var(--font-maru-mono);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.icon-library__assignment strong {
+  overflow: hidden;
+  font-size: 1.35rem;
+  line-height: 0.95;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-library__assignment small {
+  color: var(--color-maru-gray);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.icon-library__assignment-nav {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--color-maru-yellow-light);
+}
+
+.icon-library__assignment-nav .maru-button {
+  margin-left: auto;
 }
 
 .icon-library__intro {
@@ -3523,6 +3593,12 @@ body {
 .icon-library__secondary-button:active:not(:disabled) {
   translate: 1px 1px;
   box-shadow: 1px 1px 0 var(--color-maru-black);
+}
+
+.icon-library__secondary-button:disabled,
+.icon-library__pick:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .icon-library__grid {
@@ -4056,6 +4132,20 @@ body {
 
   .icon-library__title {
     font-size: 2rem;
+  }
+
+  .icon-library__assignment-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .icon-library__assignment-nav button {
+    width: 100%;
+  }
+
+  .icon-library__assignment-nav .maru-button {
+    grid-column: 1 / -1;
+    margin-left: 0;
   }
 
   .icon-library__grid {

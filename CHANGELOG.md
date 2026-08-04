@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Fast multi-track icon assignment from the playlist editor, with previous and next navigation.
 - Experimental paginated Yotoicons community search and import into the personal icon library.
 - Safe, exact-title-confirmed deletion of owned Yoto playlists.
 - Lossless Save As for existing Yoto playlists and MYO cards, creating detached duplicates that reuse source media.

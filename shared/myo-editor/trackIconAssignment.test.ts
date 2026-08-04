@@ -2,15 +2,22 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { PlaylistTrack } from './types.ts'
 import {
+  advanceRapidTrackIconAssignment,
+  canStageRapidTrackIconSelection,
   canAssignTrackIcon,
+  eligibleTrackIconTargets,
   effectiveTrackIcon,
+  moveTrackIconTarget,
+  rehomeTrackIconTarget,
   resetTrackIconAssignments,
+  resolveTrackIconTarget,
   resolveTrackIconPreview,
   shouldInvalidatePersonalIconCache,
   shouldLoadTrackIconPreviews,
   stageTrackIconAssignment,
   STRUCTURAL_ICON_MIX_MESSAGE,
   toTrackIconMutations,
+  trackIconTargetIndex,
 } from './trackIconAssignment.ts'
 
 const MEDIA_ID = 'a'.repeat(43)
@@ -101,6 +108,114 @@ describe('track icon staging', () => {
     assert.equal(canAssignTrackIcon(track()), true)
     assert.equal(canAssignTrackIcon(track({ trackKey: undefined })), false)
     assert.equal(canAssignTrackIcon(track({ rawIconState: undefined })), false)
+  })
+
+  it('keeps eligible targets in playlist order and excludes incomplete tracks', () => {
+    const playlist = [
+      track({ id: 'first', chapterKey: 'chapter-a', trackKey: 'track-a' }),
+      track({ id: 'unavailable', chapterKey: undefined, trackKey: undefined }),
+      track({ id: 'second', chapterKey: 'chapter-b', trackKey: 'track-b' }),
+      track({ id: 'incomplete', chapterKey: 'chapter-c', trackKey: 'track-c', rawIconState: undefined }),
+    ]
+
+    assert.deepEqual(eligibleTrackIconTargets(playlist), [
+      { chapterKey: 'chapter-a', trackKey: 'track-a' },
+      { chapterKey: 'chapter-b', trackKey: 'track-b' },
+    ])
+  })
+
+  it('opens on the first eligible target and keeps navigation within bounds', () => {
+    const targets = eligibleTrackIconTargets([
+      track({ chapterKey: 'chapter-a', trackKey: 'track-a' }),
+      track({ chapterKey: 'chapter-b', trackKey: 'track-b' }),
+    ])
+
+    assert.deepEqual(targets[0], { chapterKey: 'chapter-a', trackKey: 'track-a' })
+    assert.deepEqual(moveTrackIconTarget(targets, targets[0]!, -1), targets[0])
+    assert.deepEqual(moveTrackIconTarget(targets, targets[0]!, 1), targets[1])
+    assert.deepEqual(moveTrackIconTarget(targets, targets[1]!, 1), targets[1])
+  })
+
+  it('advances after a selection and completes without leaving the final target', () => {
+    const first = track({ chapterKey: 'chapter-a', trackKey: 'track-a' })
+    const second = track({
+      chapterKey: 'chapter-b',
+      trackKey: 'track-b',
+      rawIconState: { kind: 'present', value: null },
+    })
+    const targets = eligibleTrackIconTargets([first, second])
+
+    let assignments = stageTrackIconAssignment([], first, {
+      mode: 'icon',
+      mediaId: MEDIA_ID,
+    })
+
+    assert.deepEqual(advanceRapidTrackIconAssignment(targets, targets[0]!), {
+      target: targets[1],
+      completed: false,
+    })
+    assignments = stageTrackIconAssignment(assignments, second, { mode: 'inherit' })
+    assert.deepEqual(advanceRapidTrackIconAssignment(targets, targets[1]!), {
+      target: targets[1],
+      completed: true,
+    })
+    assert.equal(assignments.length, 2)
+  })
+
+  it('does not accept or advance a rapid selection after editor availability changes', () => {
+    const first = track({ chapterKey: 'chapter-a', trackKey: 'track-a' })
+    const second = track({ chapterKey: 'chapter-b', trackKey: 'track-b' })
+    const targets = eligibleTrackIconTargets([first, second])
+    const ready = {
+      loading: false,
+      locked: false,
+      yotoBlocked: false,
+      manageable: true,
+    }
+
+    for (const unavailable of [
+      { ...ready, loading: true },
+      { ...ready, locked: true },
+      { ...ready, yotoBlocked: true },
+      { ...ready, manageable: false },
+    ]) {
+      const accepted = canStageRapidTrackIconSelection(
+        targets,
+        targets[0]!,
+        first,
+        unavailable,
+      )
+      const next = accepted
+        ? advanceRapidTrackIconAssignment(targets, targets[0]!)?.target
+        : targets[0]
+      assert.equal(accepted, false)
+      assert.deepEqual(next, { chapterKey: 'chapter-a', trackKey: 'track-a' })
+    }
+
+    assert.equal(canStageRapidTrackIconSelection(targets, targets[0]!, first, ready), true)
+  })
+
+  it('re-homes a removed or ineligible current target to a surviving stable target', () => {
+    const removed = { chapterKey: 'chapter-a', trackKey: 'track-a' }
+    const surviving = track({ chapterKey: 'chapter-b', trackKey: 'track-b' })
+    const targetsAfterRemoval = eligibleTrackIconTargets([surviving])
+    const targetsAfterIneligibility = eligibleTrackIconTargets([
+      track({ chapterKey: 'chapter-a', trackKey: 'track-a', rawIconState: undefined }),
+      surviving,
+    ])
+
+    assert.deepEqual(rehomeTrackIconTarget(targetsAfterRemoval, removed), targetsAfterRemoval[0])
+    assert.deepEqual(rehomeTrackIconTarget(targetsAfterIneligibility, removed), targetsAfterIneligibility[0])
+    assert.equal(rehomeTrackIconTarget([], removed), null)
+  })
+
+  it('resolves the current target by stable raw keys after playlist order changes', () => {
+    const first = track({ id: 'shared-row', title: 'First', chapterKey: 'chapter-a', trackKey: 'track-a' })
+    const second = track({ id: 'shared-row', title: 'Second', chapterKey: 'chapter-b', trackKey: 'track-b' })
+    const targets = eligibleTrackIconTargets([first, second])
+
+    assert.equal(trackIconTargetIndex(targets, targets[1]!), 1)
+    assert.equal(resolveTrackIconTarget([second, first], targets[1]!)?.title, 'Second')
   })
 
   it('full Reset is represented by clearing all staged assignments', () => {

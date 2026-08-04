@@ -11,6 +11,20 @@ interface LoadOptions {
   refreshAfterCurrent?: boolean
 }
 
+export function shouldCloseIconLibraryAfterSelection(
+  selectionMode: boolean,
+  rapidAssignment: boolean,
+): boolean {
+  return selectionMode && !rapidAssignment
+}
+
+export function isIconLibrarySelectionBlocked(
+  modalBusy: boolean,
+  recoveryRequired: boolean,
+): boolean {
+  return modalBusy || recoveryRequired
+}
+
 function extractIconError(error: unknown): string {
   const fetchError = error as {
     data?: { statusMessage?: string, message?: string }

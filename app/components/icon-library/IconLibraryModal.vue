@@ -1,20 +1,40 @@
 <script setup lang="ts">
 import IconStaticEditor from './IconStaticEditor.vue'
 import CommunityIconSearch from './CommunityIconSearch.vue'
-import { useIconLibrary } from './useIconLibrary'
+import {
+  isIconLibrarySelectionBlocked,
+  shouldCloseIconLibraryAfterSelection,
+  useIconLibrary,
+} from './useIconLibrary'
 import type { PersonalIcon, PersonalIconUploadResponse } from '#shared/yoto/iconContract'
 
 const props = withDefaults(defineProps<{
   selectionMode?: boolean
   selectedMediaId?: string | null
+  rapidAssignment?: boolean
+  assignmentTargetTitle?: string
+  assignmentTargetPosition?: number
+  assignmentTargetCount?: number
+  assignmentComplete?: boolean
+  canPrevious?: boolean
+  canNext?: boolean
 }>(), {
   selectionMode: false,
   selectedMediaId: null,
+  rapidAssignment: false,
+  assignmentTargetTitle: '',
+  assignmentTargetPosition: 0,
+  assignmentTargetCount: 0,
+  assignmentComplete: false,
+  canPrevious: false,
+  canNext: false,
 })
 
 const emit = defineEmits<{
   select: [icon: PersonalIcon]
   inherit: []
+  previous: []
+  next: []
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -42,12 +62,26 @@ const communitySearch = ref<{ reset: () => void } | null>(null)
 const editing = ref(false)
 const activeTab = ref<'my' | 'community'>('my')
 const communityBusy = ref(false)
+const communityAcceptanceBusy = ref(false)
 const headingId = 'icon-library-heading'
 let restoreFocusTo: HTMLElement | null = null
 
 const uploadBusy = computed(() => uploadStatus.value === 'uploading')
-const modalBusy = computed(() => uploadBusy.value || communityBusy.value)
+const modalBusy = computed(() =>
+  uploadBusy.value || communityBusy.value || communityAcceptanceBusy.value,
+)
 const uploadBlocked = computed(() => uploadBusy.value || recoveryRequired.value)
+const rapidSelection = computed(() => props.selectionMode && props.rapidAssignment)
+const selectionBlocked = computed(() =>
+  isIconLibrarySelectionBlocked(modalBusy.value, recoveryRequired.value),
+)
+const assignmentAnnouncement = computed(() => {
+  if (!rapidSelection.value || !props.assignmentTargetCount) return ''
+  if (props.assignmentComplete) {
+    return `All ${props.assignmentTargetCount} eligible tracks visited. Assignment remains staged until you update or Reset.`
+  }
+  return `Track ${props.assignmentTargetPosition} of ${props.assignmentTargetCount}: ${props.assignmentTargetTitle}`
+})
 
 async function showEditor() {
   if (uploadBlocked.value) return
@@ -76,14 +110,24 @@ function close() {
 }
 
 function chooseIcon(icon: PersonalIcon) {
-  if (!props.selectionMode || uploadBusy.value) return
+  if (!props.selectionMode || selectionBlocked.value) return
   emit('select', icon)
-  close()
+  if (shouldCloseIconLibraryAfterSelection(props.selectionMode, props.rapidAssignment)) close()
 }
 
 function useChapterIcon() {
-  if (!props.selectionMode || uploadBusy.value) return
+  if (!props.selectionMode || selectionBlocked.value) return
   emit('inherit')
+  if (shouldCloseIconLibraryAfterSelection(props.selectionMode, props.rapidAssignment)) close()
+}
+
+function moveAssignment(direction: 'previous' | 'next') {
+  if (!rapidSelection.value || selectionBlocked.value) return
+  emit(direction)
+}
+
+function finishAssignment() {
+  if (!rapidSelection.value || modalBusy.value) return
   close()
 }
 
@@ -127,21 +171,27 @@ async function onUpload(blob: Blob, filename: string) {
 }
 
 async function onCommunityAccepted(response: PersonalIconUploadResponse) {
-  const refreshed = await acceptImportedIcon(response)
-  if (!refreshed) {
-    if (recoveryRequired.value) {
-      activeTab.value = 'my'
-      await nextTick()
-      retryButton.value?.focus()
+  communityAcceptanceBusy.value = true
+  try {
+    const refreshed = await acceptImportedIcon(response)
+    if (!refreshed) {
+      if (recoveryRequired.value) {
+        activeTab.value = 'my'
+        await nextTick()
+        retryButton.value?.focus()
+      }
+      return
     }
-    return
+    communityAcceptanceBusy.value = false
+    if (props.selectionMode) {
+      chooseIcon(response.icon)
+      return
+    }
+    activeTab.value = 'my'
   }
-  if (props.selectionMode) {
-    emit('select', response.icon)
-    close()
-    return
+  finally {
+    communityAcceptanceBusy.value = false
   }
-  activeTab.value = 'my'
 }
 
 watch(open, async (isOpen) => {
@@ -150,6 +200,7 @@ watch(open, async (isOpen) => {
     editing.value = false
     activeTab.value = 'my'
     communityBusy.value = false
+    communityAcceptanceBusy.value = false
     communitySearch.value?.reset()
     await nextTick()
     closeButton.value?.focus()
@@ -181,7 +232,7 @@ watch(open, async (isOpen) => {
           <div>
             <p class="icon-library__kicker font-maru-bold">Your Yoto account</p>
             <h2 :id="headingId" class="icon-library__title font-maru-bold">
-              {{ selectionMode ? 'Choose track icon' : 'My Icons' }}
+              {{ rapidSelection ? 'Assign track icons' : selectionMode ? 'Choose track icon' : 'My Icons' }}
             </h2>
           </div>
           <button
@@ -189,12 +240,22 @@ watch(open, async (isOpen) => {
             type="button"
             class="icon-library__close"
             :disabled="modalBusy"
-            :aria-label="selectionMode ? 'Close track icon chooser' : 'Close My Icons'"
+            :aria-label="rapidSelection ? 'Close track icon assignment' : selectionMode ? 'Close track icon chooser' : 'Close My Icons'"
             @click="close"
           >
             Close
           </button>
         </header>
+
+        <div v-if="rapidSelection" class="icon-library__assignment">
+          <div>
+            <span class="icon-library__assignment-position">
+              Track {{ assignmentTargetPosition }} of {{ assignmentTargetCount }}
+            </span>
+            <strong>{{ assignmentTargetTitle }}</strong>
+            <small v-if="assignmentComplete">All eligible tracks visited. Choose another target to make changes, or select Done.</small>
+          </div>
+        </div>
 
         <div class="icon-library__body">
           <IconStaticEditor
@@ -234,7 +295,7 @@ watch(open, async (isOpen) => {
               v-if="selectionMode"
               type="button"
               class="icon-library__inherit-button"
-              :disabled="uploadBusy"
+              :disabled="selectionBlocked"
               @click="useChapterIcon"
             >
               <span class="icon-library__inherit-mark" aria-hidden="true">↳</span>
@@ -295,6 +356,7 @@ watch(open, async (isOpen) => {
                   v-if="selectionMode"
                   type="button"
                   class="icon-library__pick"
+                  :disabled="selectionBlocked"
                   :aria-label="`Use personal icon ${index + 1}`"
                   :aria-pressed="icon.mediaId === selectedMediaId"
                   @click="chooseIcon(icon)"
@@ -316,7 +378,7 @@ watch(open, async (isOpen) => {
             <CommunityIconSearch
               v-else
               ref="communitySearch"
-              :busy="uploadBlocked"
+              :busy="uploadBlocked || communityAcceptanceBusy"
               :selection-mode="selectionMode"
               @accepted="onCommunityAccepted"
               @busy-change="communityBusy = $event"
@@ -326,7 +388,34 @@ watch(open, async (isOpen) => {
           <p v-if="errorMessage && (editing || activeTab === 'community' || status !== 'error')" class="icon-library__error" role="alert">{{ errorMessage }}</p>
         </div>
 
-        <p class="sr-only" aria-live="polite">{{ announcement }}</p>
+        <footer v-if="rapidSelection" class="icon-library__assignment-nav border-maru-top">
+          <button
+            type="button"
+            class="icon-library__secondary-button"
+            :disabled="!canPrevious || selectionBlocked"
+            @click="moveAssignment('previous')"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            class="icon-library__secondary-button"
+            :disabled="!canNext || selectionBlocked"
+            @click="moveAssignment('next')"
+          >
+            Next
+          </button>
+          <button
+            type="button"
+            class="maru-button maru-button--sm bg-maru-blue text-maru-white"
+            :disabled="modalBusy"
+            @click="finishAssignment"
+          >
+            <span class="maru-button__label">Done</span>
+          </button>
+        </footer>
+
+        <p class="sr-only" aria-live="polite">{{ announcement }} {{ assignmentAnnouncement }}</p>
       </section>
     </div>
   </Teleport>
