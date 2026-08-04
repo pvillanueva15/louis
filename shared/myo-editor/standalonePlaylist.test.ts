@@ -278,6 +278,11 @@ describe('standalone playlist drafts', () => {
     )
   })
 
+  it('executes the ordinary Reset title path for existing cards and new drafts', () => {
+    assert.equal(resetEditorTitle(false, false, 'Original title'), 'Original title')
+    assert.equal(resetEditorTitle(true, false, 'Ignored baseline'), '')
+  })
+
   it('retains unload protection throughout a foreground card mutation', () => {
     const beforeMutation = {
       backgroundSaveActive: false,
@@ -310,5 +315,15 @@ describe('standalone playlist drafts', () => {
       }),
       false,
     )
+  })
+
+  it('locks navigation and unload while an irreversible deletion is unresolved', () => {
+    const deletionLocks = {
+      backgroundSaveActive: false,
+      cardMutationActive: false,
+      deletionActive: true,
+    }
+    assert.equal(shouldBlockEditorNavigation(false, deletionLocks), true)
+    assert.equal(shouldWarnBeforeUnload(false, deletionLocks), true)
   })
 })

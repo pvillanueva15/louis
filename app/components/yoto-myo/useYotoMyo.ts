@@ -1,5 +1,6 @@
 import type { YotoAuthStatus, YotoContentMineResponse, YotoMyoCard, YotoMyoStatus } from './types'
 import { shouldPreserveAuxiliaryRefreshState } from '#shared/yoto/refreshPolicy'
+import { removeDeletedCard } from '#shared/yoto/cardDeletion'
 
 interface RefreshOptions {
   auxiliary?: boolean
@@ -139,6 +140,11 @@ export function useYotoMyo() {
     await checkStatus({ auxiliary: true })
   }
 
+  async function removeCardAndRefresh(cardId: string) {
+    cards.value = removeDeletedCard(cards.value, cardId)
+    await checkStatus({ auxiliary: true })
+  }
+
   onMounted(() => {
     checkStatus()
   })
@@ -154,6 +160,7 @@ export function useYotoMyo() {
     disconnect,
     refresh,
     refreshAfterContentMutation,
+    removeCardAndRefresh,
     fetchCards,
   }
 }

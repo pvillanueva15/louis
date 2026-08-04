@@ -55,6 +55,15 @@ import {
   type CardMutation,
   type MutateCardRequest,
 } from '#shared/yoto/cardMutation'
+import {
+  captureCardDeletionTarget,
+  isCardDeletionAvailable,
+  isCardDeletionTargetCurrent,
+  isExactCardTitleConfirmation,
+  runCardDeletionClientAttempt,
+  type CardDeletionAvailability,
+  type CardDeletionTarget,
+} from '#shared/yoto/cardDeletion'
 import type { YotoMyoCard } from '~/components/yoto-myo/types'
 import { cardToPlaylist } from './cardToPlaylist'
 import {
@@ -105,6 +114,10 @@ export interface MyoEditorContext {
   saveProgress: ComputedRef<SaveProgress | null>
   errorMessage: Ref<string>
   createOutcomeUncertain: Ref<boolean>
+  deletionOutcomeUncertain: Ref<boolean>
+  deletionTarget: Ref<Readonly<CardDeletionTarget> | null>
+  deletionActive: ComputedRef<boolean>
+  canDeleteCard: ComputedRef<boolean>
   titleDirty: ComputedRef<boolean>
   playlistDirty: ComputedRef<boolean>
   iconDirty: ComputedRef<boolean>
@@ -131,6 +144,10 @@ export interface MyoEditorContext {
   appendTracks: (tracks: PlaylistTrack[]) => { ok: true, added: number } | { ok: false, message: string }
   createPlaylist: (options?: { acknowledgeCapacityRisk?: boolean }) => Promise<void>
   updateCard: (options?: { acknowledgeCapacityRisk?: boolean }) => Promise<void>
+  beginCardDeletion: () => boolean
+  cancelCardDeletion: () => void
+  canSubmitCardDeletion: (enteredTitle: string) => boolean
+  deleteSelectedCard: (enteredTitle: string) => Promise<void>
 }
 
 export const MYO_EDITOR_KEY: InjectionKey<MyoEditorContext> = Symbol('myoEditor')
@@ -183,6 +200,7 @@ const maxOverallProgressBySaveKey = new Map<string, number>()
 export interface UseMyoEditorOptions {
   onPlaylistCreated?: (cardId: string) => void
   onCardUpdated?: (cardId: string) => void | Promise<void>
+  onCardDeleted?: (cardId: string) => void | Promise<void>
 }
 
 function monotonicOverallProgress(saveKey: string, next: number): number {
@@ -218,6 +236,10 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const loading = ref(false)
   const errorMessage = ref('')
   const createOutcomeUncertain = ref(false)
+  const deletionOutcomeUncertain = ref(false)
+  const deletionTarget = ref<Readonly<CardDeletionTarget> | null>(null)
+  const deletionActiveCardId = ref<string | null>(null)
+  const hydratingPersistedSaves = ref(true)
   const cardMutationCardId = ref<string | null>(null)
   const activeSaves = ref(new Map<string, CardSaveState>())
 
@@ -247,7 +269,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function isCardSaving(cardId: string): boolean {
-    return cardMutationCardId.value === cardId || isSaveActive(cardId)
+    return cardMutationCardId.value === cardId
+      || deletionActiveCardId.value === cardId
+      || isSaveActive(cardId)
   }
 
   const isEditing = computed(() =>
@@ -308,6 +332,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       : existingCardChanges.value.isDirty,
   )
 
+  const deletionDirty = computed(() =>
+    cardTitle.value !== baselineCardTitle.value
+    || playlistDirty.value
+    || rawTrackMutationDirty.value,
+  )
+
   const selectedSaveKey = computed(() =>
     isNewPlaylist.value ? NEW_PLAYLIST_SAVE_KEY : selectedCardId.value,
   )
@@ -328,14 +358,40 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       && cardMutationCardId.value === selectedCardId.value,
   )
 
+  const deletionActive = computed(() => deletionActiveCardId.value !== null)
+
+  function currentCardDeletionAvailability(): CardDeletionAvailability {
+    const cardId = selectedCardId.value
+    return {
+      selectedCardId: cardId,
+      isNewPlaylist: isNewPlaylist.value,
+      isPodcast: isPodcast.value,
+      baselineTitle: baselineCardTitle.value,
+      revision: cardRevision.value,
+      isDirty: deletionDirty.value,
+      loading: loading.value,
+      saveJobActive: Boolean(cardId && isSaveActive(cardId)),
+      mutationActive: cardMutationCardId.value !== null,
+      deletionActive: deletionActive.value,
+      pollingOrHydrating: hydratingPersistedSaves.value,
+      persistedSaveActive: Boolean(cardId && readPersistedSaves()[cardId]),
+      outcomeUncertain: deletionOutcomeUncertain.value,
+    }
+  }
+
+  const canDeleteCard = computed(() =>
+    isCardDeletionAvailable(currentCardDeletionAvailability()),
+  )
+
   const isPlaylistLocked = computed(
-    () => cardMutationActive.value || backgroundSaveActive.value,
+    () => cardMutationActive.value || deletionActive.value || backgroundSaveActive.value,
   )
 
   const isNavigationLocked = computed(() =>
     shouldBlockEditorNavigation(isNewPlaylist.value, {
       backgroundSaveActive: backgroundSaveActive.value,
       cardMutationActive: cardMutationActive.value,
+      deletionActive: deletionActive.value,
     }),
   )
 
@@ -384,6 +440,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     cardTitle.value = titleFallback || detail.title
     baselineCardTitle.value = cardTitle.value
     cardRevision.value = detail.revision
+    deletionOutcomeUncertain.value = false
     isSaveAsDraft.value = false
     clearSaveAsDraftSource()
     resetRawTrackStages()
@@ -825,6 +882,98 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     }
   }
 
+  function beginCardDeletion(): boolean {
+    const target = captureCardDeletionTarget(currentCardDeletionAvailability())
+    if (!target) return false
+    deletionTarget.value = target
+    errorMessage.value = ''
+    return true
+  }
+
+  function cancelCardDeletion() {
+    if (deletionActive.value) return
+    deletionTarget.value = null
+  }
+
+  function canSubmitCardDeletion(enteredTitle: string): boolean {
+    const target = deletionTarget.value
+    return Boolean(
+      target
+      && isExactCardTitleConfirmation(enteredTitle, target)
+      && isCardDeletionTargetCurrent(target, currentCardDeletionAvailability()),
+    )
+  }
+
+  function clearDeletedCardSelection(target: CardDeletionTarget) {
+    if (
+      selectedCardId.value !== target.cardId
+      || baselineCardTitle.value !== target.baselineTitle
+      || cardRevision.value !== target.revision
+    ) return
+
+    selectedCardId.value = null
+    isNewPlaylist.value = false
+    isSaveAsDraft.value = false
+    clearSaveAsDraftSource()
+    cardTitle.value = ''
+    baselineCardTitle.value = ''
+    cardRevision.value = ''
+    isPodcast.value = false
+    playlist.value = []
+    baselinePlaylist.value = []
+    resetRawTrackStages()
+    originalCardDetail.value = null
+    createOutcomeUncertain.value = false
+    deleteSaveState(target.cardId)
+    removePersistedSave(target.cardId)
+  }
+
+  async function deleteSelectedCard(enteredTitle: string) {
+    const target = deletionTarget.value
+    if (!target || !canSubmitCardDeletion(enteredTitle)) return
+
+    errorMessage.value = ''
+    deletionActiveCardId.value = target.cardId
+    try {
+      const deleted = await runCardDeletionClientAttempt(
+        target,
+        () => $fetch(
+          `/api/yoto/content/${encodeURIComponent(target.cardId)}`,
+          {
+            method: 'DELETE',
+            body: {
+              expectedRevision: target.revision,
+              expectedTitle: target.baselineTitle,
+            },
+          },
+        ),
+        {
+          onValidatedSuccess: () => {
+            clearDeletedCardSelection(target)
+            deletionTarget.value = null
+            deletionOutcomeUncertain.value = false
+            playEvent('saveComplete')
+          },
+          onFailure: (failure) => {
+            deletionOutcomeUncertain.value = failure.outcomeUncertain
+            errorMessage.value = failure.message
+            playEvent('saveError')
+          },
+        },
+      )
+      if (!deleted) return
+      try {
+        await options.onCardDeleted?.(target.cardId)
+      }
+      catch {
+        // The validated deletion stays local even if the auxiliary refresh fails.
+      }
+    }
+    finally {
+      deletionActiveCardId.value = null
+    }
+  }
+
   async function selectCard(card: YotoMyoCard) {
     if (loading.value || isNavigationLocked.value) return
 
@@ -1260,11 +1409,12 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
   onMounted(() => {
     stopBeforeUnloadWatch = watch(
-      [isDirty, backgroundSaveActive, cardMutationActive],
-      ([dirty, saveActive, mutationActive]) => {
+      [isDirty, backgroundSaveActive, cardMutationActive, deletionActive],
+      ([dirty, saveActive, mutationActive, deleteActive]) => {
         const shouldAttach = shouldWarnBeforeUnload(dirty, {
           backgroundSaveActive: saveActive,
           cardMutationActive: mutationActive,
+          deletionActive: deleteActive,
         })
         if (shouldAttach === beforeUnloadAttached) return
 
@@ -1276,7 +1426,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       },
       { immediate: true },
     )
-    void hydratePersistedSaves()
+    void hydratePersistedSaves().finally(() => {
+      hydratingPersistedSaves.value = false
+    })
   })
 
   onUnmounted(() => {
@@ -1301,6 +1453,10 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     saveProgress,
     errorMessage,
     createOutcomeUncertain,
+    deletionOutcomeUncertain,
+    deletionTarget,
+    deletionActive,
+    canDeleteCard,
     titleDirty,
     playlistDirty,
     iconDirty,
@@ -1327,5 +1483,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     appendTracks,
     createPlaylist,
     updateCard,
+    beginCardDeletion,
+    cancelCardDeletion,
+    canSubmitCardDeletion,
+    deleteSelectedCard,
   }
 }

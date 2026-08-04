@@ -33,6 +33,7 @@ const playlistDirty = editor?.playlistDirty
 const hasRawStructuralConflict = editor?.hasRawStructuralConflict
 const rawTrackUndo = editor?.rawTrackUndo
 const structuralEditHint = editor?.structuralEditHint
+const canDeleteCard = editor?.canDeleteCard
 
 const showCapacityConfirm = ref(false)
 
@@ -188,6 +189,14 @@ function onUndoRemoval() {
   editor?.undoTrackRemoval()
 }
 
+function onDelete() {
+  if (!canDeleteCard?.value || !editor?.beginCardDeletion()) {
+    playEvent('disabled')
+    return
+  }
+  playEvent('buttonPrimary')
+}
+
 watch(
   () => [
     overCapacity.value,
@@ -216,6 +225,15 @@ watch(
       <div class="w-full flex items-center gap-2 sm:gap-3 min-w-0">
         <PlaylistCapacityMeters />
         <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+          <button
+            v-if="selectedCardId && !isNewPlaylist"
+            type="button"
+            class="panel-footer-btn panel-footer-btn--short panel-footer-btn--secondary shrink-0 bg-maru-red-lighter"
+            :disabled="!canDeleteCard"
+            @click="onDelete"
+          >
+            <span class="panel-footer-btn__label">Delete</span>
+          </button>
           <button
             v-if="selectedCardId && !isNewPlaylist"
             type="button"

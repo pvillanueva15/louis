@@ -6,7 +6,7 @@ import type {
   SaveOperation,
 } from './types'
 import type { CardMutation } from '../yoto/cardMutation.ts'
-import { getCardTitleValidationError } from '../yoto/cardMutation.ts'
+import { getCardTitleValidationError, resetCardTitle } from '../yoto/cardMutation.ts'
 
 export const NEW_PLAYLIST_SAVE_KEY = 'new-playlist-draft'
 export const UNCERTAIN_CREATE_START_MESSAGE
@@ -215,6 +215,7 @@ export function classifyCreateStartFailure(error: unknown): {
 export interface EditorOperationLocks {
   backgroundSaveActive: boolean
   cardMutationActive: boolean
+  deletionActive?: boolean
 }
 
 export function shouldBlockEditorNavigation(
@@ -222,6 +223,7 @@ export function shouldBlockEditorNavigation(
   locks: EditorOperationLocks,
 ): boolean {
   return locks.cardMutationActive
+    || locks.deletionActive === true
     || (isNewPlaylist && locks.backgroundSaveActive)
 }
 
@@ -229,5 +231,5 @@ export function shouldWarnBeforeUnload(
   isDirty: boolean,
   locks: EditorOperationLocks,
 ): boolean {
-  return isDirty && !locks.backgroundSaveActive
+  return locks.deletionActive === true || (isDirty && !locks.backgroundSaveActive)
 }

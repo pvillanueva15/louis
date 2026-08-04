@@ -18,7 +18,14 @@
         </template>
 
         <template #myo>
-          <YotoMyo embedded @update:count="myoCountLabel = $event" />
+          <section
+            class="flex flex-col flex-1 min-h-0 h-full w-full overflow-hidden"
+            aria-label="My Cards"
+            data-my-cards-focus-anchor
+            tabindex="-1"
+          >
+            <YotoMyo embedded @update:count="myoCountLabel = $event" />
+          </section>
         </template>
 
         <template #playlist>
@@ -80,6 +87,7 @@
       @update:blocking="welcomeBlocksApp = $event"
       @dismiss="onWelcomeDismiss"
     />
+    <PlaylistDeleteModal />
   </div>
 </template>
 
@@ -95,6 +103,7 @@ import {
 } from '~/components/playlist/dnd'
 import YoutubePlaylist from '~/components/playlist/YoutubePlaylist.vue'
 import PlaylistPanelFooter from '~/components/playlist/PlaylistPanelFooter.vue'
+import PlaylistDeleteModal from '~/components/playlist/PlaylistDeleteModal.vue'
 import AppMainLayout from '~/components/layout/AppMainLayout.vue'
 import { useMyoEditor } from '~/components/myo-editor/useMyoEditor'
 import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
@@ -114,6 +123,7 @@ const editor = useMyoEditor({
     void yoto.refreshAfterContentMutation()
   },
   onCardUpdated: () => yoto.refreshAfterContentMutation(),
+  onCardDeleted: cardId => yoto.removeCardAndRefresh(cardId),
 })
 provide(MYO_EDITOR_KEY, editor)
 

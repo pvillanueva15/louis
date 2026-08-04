@@ -91,7 +91,7 @@ export async function fetchYotoApi<T>(
   path: string,
   accessToken: string,
   options?: {
-    method?: 'GET' | 'POST' | 'PUT'
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
     headers?: Record<string, string>
     body?: unknown
   },
