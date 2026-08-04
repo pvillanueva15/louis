@@ -33,6 +33,23 @@ export interface TrackIconPreviewLoadState {
   libraryStatus: PersonalIconLibraryStatus
 }
 
+export interface TrackIconTarget {
+  chapterKey: string
+  trackKey: string
+}
+
+export interface RapidTrackIconAdvance {
+  target: TrackIconTarget
+  completed: boolean
+}
+
+export interface RapidTrackIconSelectionGate {
+  loading: boolean
+  locked: boolean
+  yotoBlocked: boolean
+  manageable: boolean
+}
+
 export function trackIconTargetKey(chapterKey: string, trackKey: string): string {
   return JSON.stringify([chapterKey, trackKey])
 }
@@ -52,6 +69,86 @@ export function canAssignTrackIcon(track: PlaylistTrack): boolean {
     && track.chapterTrackCount
     && track.chapterTrackCount > 0,
   )
+}
+
+export function eligibleTrackIconTargets(
+  playlist: PlaylistTrack[],
+): TrackIconTarget[] {
+  return playlist
+    .filter(canAssignTrackIcon)
+    .map(track => ({
+      chapterKey: track.chapterKey!,
+      trackKey: track.trackKey!,
+    }))
+}
+
+export function trackIconTargetIndex(
+  targets: TrackIconTarget[],
+  target: TrackIconTarget | null,
+): number {
+  if (!target) return -1
+  const key = trackIconTargetKey(target.chapterKey, target.trackKey)
+  return targets.findIndex(item =>
+    trackIconTargetKey(item.chapterKey, item.trackKey) === key,
+  )
+}
+
+export function rehomeTrackIconTarget(
+  targets: TrackIconTarget[],
+  target: TrackIconTarget | null,
+): TrackIconTarget | null {
+  const index = trackIconTargetIndex(targets, target)
+  return index >= 0 ? targets[index]! : targets[0] ?? null
+}
+
+export function canStageRapidTrackIconSelection(
+  targets: TrackIconTarget[],
+  target: TrackIconTarget | null,
+  track: PlaylistTrack | null,
+  gate: RapidTrackIconSelectionGate,
+): boolean {
+  if (
+    gate.loading
+    || gate.locked
+    || gate.yotoBlocked
+    || !gate.manageable
+    || !target
+    || !track
+    || !canAssignTrackIcon(track)
+    || trackIconTargetIndex(targets, target) < 0
+  ) return false
+
+  return track.chapterKey === target.chapterKey && track.trackKey === target.trackKey
+}
+
+export function resolveTrackIconTarget(
+  playlist: PlaylistTrack[],
+  target: TrackIconTarget | null,
+): PlaylistTrack | null {
+  if (!target) return null
+  return playlist.find(track =>
+    track.chapterKey === target.chapterKey && track.trackKey === target.trackKey,
+  ) ?? null
+}
+
+export function moveTrackIconTarget(
+  targets: TrackIconTarget[],
+  target: TrackIconTarget | null,
+  offset: -1 | 1,
+): TrackIconTarget | null {
+  const index = trackIconTargetIndex(targets, target)
+  if (index < 0) return targets[0] ?? null
+  return targets[Math.max(0, Math.min(targets.length - 1, index + offset))] ?? null
+}
+
+export function advanceRapidTrackIconAssignment(
+  targets: TrackIconTarget[],
+  target: TrackIconTarget | null,
+): RapidTrackIconAdvance | null {
+  const index = trackIconTargetIndex(targets, target)
+  if (index < 0) return null
+  if (index === targets.length - 1) return { target: targets[index]!, completed: true }
+  return { target: targets[index + 1]!, completed: false }
 }
 
 function assignmentMatchesBaseline(

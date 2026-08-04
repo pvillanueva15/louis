@@ -1,13 +1,31 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
-import { useIconLibrary } from './useIconLibrary.ts'
+import {
+  isIconLibrarySelectionBlocked,
+  shouldCloseIconLibraryAfterSelection,
+  useIconLibrary,
+} from './useIconLibrary.ts'
 import { useCommunityIconSearch } from './useCommunityIconSearch.ts'
 import { stageTrackIconAssignment } from '../../../shared/myo-editor/trackIconAssignment.ts'
 import { COMMUNITY_ICON_UPLOAD_OUTCOME_UNCERTAIN } from '../../../shared/yoto/communityIconContract.ts'
 import type { PlaylistTrack } from '../../../shared/myo-editor/types.ts'
 
 const MEDIA_ID = 'a'.repeat(43)
+
+describe('icon library selection modes', () => {
+  it('closes the existing single-track picker but keeps rapid assignment open', () => {
+    assert.equal(shouldCloseIconLibraryAfterSelection(true, false), true)
+    assert.equal(shouldCloseIconLibraryAfterSelection(true, true), false)
+    assert.equal(shouldCloseIconLibraryAfterSelection(false, false), false)
+  })
+
+  it('blocks selection and target navigation during busy and recovery states', () => {
+    assert.equal(isIconLibrarySelectionBlocked(false, false), false)
+    assert.equal(isIconLibrarySelectionBlocked(true, false), true)
+    assert.equal(isIconLibrarySelectionBlocked(false, true), true)
+  })
+})
 
 interface TestRef<T> {
   value: T
