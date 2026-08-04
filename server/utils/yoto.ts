@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import {
-  getAccessTokenCookie,
+  getStoredYotoAccessToken,
   getRefreshTokenCookie,
   refreshAccessToken,
   setAccessTokenCookie,
@@ -8,8 +8,8 @@ import {
   setScopeCookie,
   YOTO_API_BASE_URL,
   type YotoConfig,
-} from './yoto-auth'
-import { withMappedYotoLimitError } from '#shared/myo-editor/yotoMyoLimits'
+} from './yoto-auth.ts'
+import { withMappedYotoLimitError } from '../../shared/myo-editor/yotoMyoLimits.ts'
 
 export function getYotoRedirectUri(event: H3Event): string {
   const config = useRuntimeConfig(event)
@@ -43,7 +43,7 @@ export function isYotoConfigured(event: H3Event): boolean {
 }
 
 export function isYotoConnected(event: H3Event): boolean {
-  return Boolean(getRefreshTokenCookie(event) || getAccessTokenCookie(event))
+  return Boolean(getRefreshTokenCookie(event) || getStoredYotoAccessToken(event))
 }
 
 export async function getYotoAccessToken(event: H3Event): Promise<string> {
@@ -76,7 +76,7 @@ export async function getYotoAccessToken(event: H3Event): Promise<string> {
     }
   }
 
-  const accessToken = getAccessTokenCookie(event)
+  const accessToken = getStoredYotoAccessToken(event)
   if (accessToken) {
     return accessToken
   }
@@ -94,6 +94,7 @@ export async function fetchYotoApi<T>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
     headers?: Record<string, string>
     body?: unknown
+    signal?: AbortSignal
   },
 ): Promise<T> {
   const url = path.startsWith('http') ? path : `${YOTO_API_BASE_URL}${path}`
@@ -106,6 +107,7 @@ export async function fetchYotoApi<T>(
         ...options?.headers,
       },
       body: options?.body,
+      signal: options?.signal,
     })
   }
   catch (err: unknown) {

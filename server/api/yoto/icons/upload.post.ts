@@ -8,6 +8,7 @@ import {
   YotoIconContractError,
 } from '../../../utils/yoto-icons'
 import { fetchYotoApi, getYotoAccessToken } from '../../../utils/yoto'
+import { STATIC_ICON_MAX_BYTES } from '../../../../shared/yoto/staticIcon.ts'
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
@@ -21,7 +22,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const contentLength = Number(getHeader(event, 'content-length'))
-  if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
+  if (Number.isFinite(contentLength) && contentLength > STATIC_ICON_MAX_BYTES) {
     throw createError({ statusCode: 413, statusMessage: 'PNG body must be no larger than 64 KiB.' })
   }
 

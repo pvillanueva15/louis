@@ -164,7 +164,7 @@ export function setAccessTokenCookie(event: H3Event, accessToken: string, expire
   })
 }
 
-export function getAccessTokenCookie(event: H3Event): string | undefined {
+export function getStoredYotoAccessToken(event: H3Event): string | undefined {
   return getCookie(event, YOTO_ACCESS_TOKEN_COOKIE)
 }
 

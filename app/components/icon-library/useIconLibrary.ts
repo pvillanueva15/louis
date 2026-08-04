@@ -5,7 +5,7 @@ import type {
 } from '#shared/yoto/iconContract'
 
 type LibraryStatus = 'idle' | 'loading' | 'error' | 'ready'
-type UploadStatus = 'idle' | 'uploading' | 'accepted-refresh-failed'
+type UploadStatus = 'idle' | 'uploading' | 'accepted-refresh-failed' | 'outcome-uncertain'
 
 interface LoadOptions {
   refreshAfterCurrent?: boolean
@@ -33,7 +33,10 @@ export function useIconLibrary() {
   const announcement = useState('yoto-personal-icons-announcement', () => '')
   const newestMediaId = useState<string | null>('yoto-personal-icons-newest', () => null)
   const generation = useState('yoto-personal-icons-generation', () => 0)
-  const recoveryRequired = computed(() => uploadStatus.value === 'accepted-refresh-failed')
+  const recoveryRequired = computed(() => (
+    uploadStatus.value === 'accepted-refresh-failed'
+    || uploadStatus.value === 'outcome-uncertain'
+  ))
 
   function waitForCurrentLoad(): Promise<boolean> {
     if (status.value !== 'loading') return Promise.resolve(status.value === 'ready')
@@ -68,7 +71,10 @@ export function useIconLibrary() {
       if (generation.value !== loadGeneration) return false
       icons.value = response.icons
       status.value = 'ready'
-      if (recovering) uploadStatus.value = 'idle'
+      if (recovering) {
+        uploadStatus.value = 'idle'
+        announcement.value = 'My Icons refreshed. You can try adding the community icon again.'
+      }
       return true
     }
     catch (error) {
@@ -94,20 +100,7 @@ export function useIconLibrary() {
         body: blob,
       })
       if (generation.value !== uploadGeneration) return false
-      newestMediaId.value = response.icon.mediaId
-
-      const refreshed = await load({ refreshAfterCurrent: true })
-      if (generation.value !== uploadGeneration) return false
-      if (!refreshed) {
-        uploadStatus.value = 'accepted-refresh-failed'
-        errorMessage.value = `Yoto accepted the icon, but the library could not be refreshed. Refresh the library or close My Icons before making another icon. ${errorMessage.value}`
-        announcement.value = 'Yoto accepted the icon, but the library could not be refreshed.'
-        return false
-      }
-
-      const verb = response.disposition === 'created' ? 'added' : 'found and reused'
-      announcement.value = `Icon ${verb}. Your Yoto icon library is refreshed.`
-      return true
+      return await refreshAcceptedIcon(response, uploadGeneration)
     }
     catch (error) {
       if (generation.value !== uploadGeneration) return false
@@ -123,11 +116,59 @@ export function useIconLibrary() {
     }
   }
 
+  async function refreshAcceptedIcon(
+    response: PersonalIconUploadResponse,
+    acceptedGeneration: number,
+  ): Promise<boolean> {
+    newestMediaId.value = response.icon.mediaId
+    const refreshed = await load({ refreshAfterCurrent: true })
+    if (generation.value !== acceptedGeneration) return false
+    if (!refreshed) {
+      uploadStatus.value = 'accepted-refresh-failed'
+      errorMessage.value = `Yoto accepted the icon, but the library could not be refreshed. Refresh the library or close My Icons before adding another icon. ${errorMessage.value}`
+      announcement.value = 'Yoto accepted the icon, but the library could not be refreshed.'
+      return false
+    }
+
+    const verb = response.disposition === 'created' ? 'added' : 'found and reused'
+    announcement.value = `Icon ${verb}. Your Yoto icon library is refreshed.`
+    return true
+  }
+
+  async function acceptImportedIcon(response: PersonalIconUploadResponse): Promise<boolean> {
+    if (uploadStatus.value !== 'idle') return false
+    const acceptedGeneration = generation.value
+    uploadStatus.value = 'uploading'
+    errorMessage.value = ''
+    announcement.value = 'Refreshing My Icons after community import.'
+    try {
+      return await refreshAcceptedIcon(response, acceptedGeneration)
+    }
+    finally {
+      if (
+        generation.value === acceptedGeneration
+        && uploadStatus.value === 'uploading'
+      ) uploadStatus.value = 'idle'
+    }
+  }
+
+  function markCommunityUploadOutcomeUncertain(message: string): void {
+    uploadStatus.value = 'outcome-uncertain'
+    errorMessage.value = message
+    announcement.value = 'The community icon upload outcome is uncertain. Refresh My Icons before trying again.'
+  }
+
   function resetSessionMessage() {
+    if (recoveryRequired.value) return
     errorMessage.value = ''
     announcement.value = ''
     newestMediaId.value = null
     if (uploadStatus.value !== 'uploading') uploadStatus.value = 'idle'
+  }
+
+  async function openSession(): Promise<boolean> {
+    resetSessionMessage()
+    return await load()
   }
 
   function invalidateAccountCache() {
@@ -150,7 +191,10 @@ export function useIconLibrary() {
     recoveryRequired,
     load,
     upload,
+    acceptImportedIcon,
+    markCommunityUploadOutcomeUncertain,
     resetSessionMessage,
+    openSession,
     invalidateAccountCache,
   }
 }
