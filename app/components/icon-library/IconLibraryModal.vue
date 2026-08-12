@@ -2,10 +2,10 @@
 import IconStaticEditor from './IconStaticEditor.vue'
 import CommunityIconSearch from './CommunityIconSearch.vue'
 import {
-  isIconLibrarySelectionBlocked,
   shouldCloseIconLibraryAfterSelection,
   useIconLibrary,
 } from './useIconLibrary'
+import { resolveIconAssignmentModalLocks } from '#shared/myo-editor/draftTrackIconAssignment'
 import type { PersonalIcon, PersonalIconUploadResponse } from '#shared/yoto/iconContract'
 
 const props = withDefaults(defineProps<{
@@ -18,6 +18,10 @@ const props = withDefaults(defineProps<{
   assignmentComplete?: boolean
   canPrevious?: boolean
   canNext?: boolean
+  busy?: boolean
+  selectionUnavailable?: boolean
+  draftAssignment?: boolean
+  secondaryAction?: 'chapter' | 'none'
 }>(), {
   selectionMode: false,
   selectedMediaId: null,
@@ -28,6 +32,10 @@ const props = withDefaults(defineProps<{
   assignmentComplete: false,
   canPrevious: false,
   canNext: false,
+  busy: false,
+  selectionUnavailable: false,
+  draftAssignment: false,
+  secondaryAction: 'chapter',
 })
 
 const emit = defineEmits<{
@@ -68,17 +76,21 @@ let restoreFocusTo: HTMLElement | null = null
 
 const uploadBusy = computed(() => uploadStatus.value === 'uploading')
 const modalBusy = computed(() =>
-  uploadBusy.value || communityBusy.value || communityAcceptanceBusy.value,
+  props.busy || uploadBusy.value || communityBusy.value || communityAcceptanceBusy.value,
 )
-const uploadBlocked = computed(() => uploadBusy.value || recoveryRequired.value)
+const interactionLocks = computed(() => resolveIconAssignmentModalLocks({
+  operationBusy: modalBusy.value,
+  selectionUnavailable: props.selectionUnavailable,
+  recoveryRequired: recoveryRequired.value,
+}))
+const dismissalBlocked = computed(() => interactionLocks.value.dismissalBlocked)
+const selectionBlocked = computed(() => interactionLocks.value.selectionBlocked)
+const uploadBlocked = computed(() => selectionBlocked.value)
 const rapidSelection = computed(() => props.selectionMode && props.rapidAssignment)
-const selectionBlocked = computed(() =>
-  isIconLibrarySelectionBlocked(modalBusy.value, recoveryRequired.value),
-)
 const assignmentAnnouncement = computed(() => {
   if (!rapidSelection.value || !props.assignmentTargetCount) return ''
   if (props.assignmentComplete) {
-    return `All ${props.assignmentTargetCount} eligible tracks visited. Assignment remains staged until you update or Reset.`
+    return `All ${props.assignmentTargetCount} eligible tracks visited. Assignment remains staged until you ${props.draftAssignment ? 'Create' : 'update'} or Reset.`
   }
   return `Track ${props.assignmentTargetPosition} of ${props.assignmentTargetCount}: ${props.assignmentTargetTitle}`
 })
@@ -105,7 +117,7 @@ async function retryLoad() {
 }
 
 function close() {
-  if (modalBusy.value) return
+  if (dismissalBlocked.value) return
   open.value = false
 }
 
@@ -127,7 +139,7 @@ function moveAssignment(direction: 'previous' | 'next') {
 }
 
 function finishAssignment() {
-  if (!rapidSelection.value || modalBusy.value) return
+  if (!rapidSelection.value || dismissalBlocked.value) return
   close()
 }
 
@@ -239,7 +251,7 @@ watch(open, async (isOpen) => {
             ref="closeButton"
             type="button"
             class="icon-library__close"
-            :disabled="modalBusy"
+            :disabled="dismissalBlocked"
             :aria-label="rapidSelection ? 'Close track icon assignment' : selectionMode ? 'Close track icon chooser' : 'Close My Icons'"
             @click="close"
           >
@@ -253,7 +265,7 @@ watch(open, async (isOpen) => {
               Track {{ assignmentTargetPosition }} of {{ assignmentTargetCount }}
             </span>
             <strong>{{ assignmentTargetTitle }}</strong>
-            <small v-if="assignmentComplete">All eligible tracks visited. Choose another target to make changes, or select Done.</small>
+            <small v-if="assignmentComplete">All eligible tracks visited. Choices remain staged until {{ draftAssignment ? 'Create' : 'update' }} or Reset.</small>
           </div>
         </div>
 
@@ -300,8 +312,8 @@ watch(open, async (isOpen) => {
             >
               <span class="icon-library__inherit-mark" aria-hidden="true">↳</span>
               <span>
-                <strong>Use chapter icon</strong>
-                <small>Remove this track’s explicit override.</small>
+                <strong>{{ secondaryAction === 'none' ? 'No icon' : 'Use chapter icon' }}</strong>
+                <small>{{ secondaryAction === 'none' ? 'Clear both the track and chapter icon.' : 'Remove this track’s explicit override.' }}</small>
               </span>
             </button>
 
@@ -330,7 +342,7 @@ watch(open, async (isOpen) => {
             <div v-else-if="status === 'error'" class="icon-library__state icon-library__state--error">
               <strong>We couldn’t load your icons.</strong>
               <span>{{ errorMessage }}</span>
-              <button ref="retryButton" type="button" class="icon-library__secondary-button" @click="retryLoad">
+              <button ref="retryButton" type="button" class="icon-library__secondary-button" :disabled="modalBusy" @click="retryLoad">
                 {{ recoveryRequired ? 'Refresh library' : 'Try again' }}
               </button>
             </div>
@@ -408,7 +420,7 @@ watch(open, async (isOpen) => {
           <button
             type="button"
             class="maru-button maru-button--sm bg-maru-blue text-maru-white"
-            :disabled="modalBusy"
+            :disabled="dismissalBlocked"
             @click="finishAssignment"
           >
             <span class="maru-button__label">Done</span>

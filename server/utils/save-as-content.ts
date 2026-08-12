@@ -36,6 +36,20 @@ interface ParsedSource {
   tracksByTarget: Map<string, SourceTrack>
 }
 
+function withDisplayIcon(
+  value: RawRecord,
+  icon16x16: string | null,
+): RawRecord {
+  const display = isRecord(value.display) ? value.display : {}
+  return { ...value, display: { ...display, icon16x16 } }
+}
+
+function withoutDisplayIcon(value: RawRecord): RawRecord {
+  if (!isRecord(value.display) || !Object.hasOwn(value.display, 'icon16x16')) return value
+  const { icon16x16: _removed, ...display } = value.display
+  return { ...value, display }
+}
+
 function isRecord(value: unknown): value is RawRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -66,6 +80,9 @@ function parseSource(source: SaveAsSourceSnapshot): ParsedSource {
     ) {
       throw new Error('A Save As source chapter is malformed. Reload the card and try again.')
     }
+    if (Object.hasOwn(chapterValue, 'display') && !isRecord(chapterValue.display)) {
+      throw new Error('A Save As source chapter display is malformed. Reload the card and try again.')
+    }
     if (chapterKeys.has(chapterValue.key)) {
       throw new Error('The Save As source has duplicate chapter keys and cannot be duplicated safely.')
     }
@@ -80,6 +97,9 @@ function parseSource(source: SaveAsSourceSnapshot): ParsedSource {
         || typeof trackValue.title !== 'string'
       ) {
         throw new Error('A Save As source track is malformed. Reload the card and try again.')
+      }
+      if (Object.hasOwn(trackValue, 'display') && !isRecord(trackValue.display)) {
+        throw new Error('A Save As source track display is malformed. Reload the card and try again.')
       }
       if (trackKeys.has(trackValue.key)) {
         throw new Error('The Save As source has duplicate track keys and cannot be duplicated safely.')
@@ -201,6 +221,29 @@ export function buildSaveAsPlan(
   }
   const interleaveError = nestedChapterInterleaveError(playlist, parsed)
   if (interleaveError) errors.push(interleaveError)
+  const retainedCountByChapter = new Map<string, number>()
+  for (let index = 0; index < playlist.length; index++) {
+    const track = playlist[index]!
+    if (tracks[index]?.kind !== 'reuse-source' || !track.chapterKey) continue
+    retainedCountByChapter.set(
+      track.chapterKey,
+      (retainedCountByChapter.get(track.chapterKey) ?? 0) + 1,
+    )
+  }
+  for (let index = 0; index < playlist.length; index++) {
+    const track = playlist[index]!
+    const choice = track.draftIcon
+    if (choice?.mode === 'chapter' && tracks[index]?.kind !== 'reuse-source') {
+      errors.push(`Track "${track.title}" cannot use a source chapter icon.`)
+    }
+    if (
+      choice?.mode === 'none'
+      && tracks[index]?.kind === 'reuse-source'
+      && (retainedCountByChapter.get(track.chapterKey!) ?? 0) > 1
+    ) {
+      errors.push(`Track "${track.title}" cannot clear a shared chapter icon.`)
+    }
+  }
   if (
     tracks.some(action => action.kind === 'extract-youtube')
     && !canAddProvenance(parsed.metadata?.note)
@@ -232,6 +275,12 @@ function newTrackPayload(
     const uploaded = uploadedByIndex.get(action.playlistIndex)
     if (!uploaded) throw new Error(`Missing upload result for track "${track.title}"`)
     const info = uploaded.transcodedInfo
+    const icon16x16 = track.draftIcon?.mode === 'icon'
+      ? `yoto:#${track.draftIcon.mediaId}`
+      : null
+    if (track.draftIcon?.mode === 'chapter') {
+      throw new Error(`Track "${track.title}" cannot use a source chapter icon.`)
+    }
     return {
       key: '01',
       title: track.title,
@@ -242,7 +291,7 @@ function newTrackPayload(
       fileSize: info.fileSize ?? 0,
       overlayLabel: String(action.playlistIndex + 1),
       channels: yotoChannelsOrStereo(info.channels),
-      display: { icon16x16: null },
+      display: { icon16x16 },
     }
   }
   throw new Error(`Track "${track.title}" cannot be added to the Save As draft.`)
@@ -406,15 +455,35 @@ export function buildSaveAsContent(
       const titleError = getTrackTitleValidationError(playlistTrack.title)
       if (titleError) throw new Error(titleError)
       const title = playlistTrack.title.trim()
-      return { ...sourceTrack.raw, title }
+      const titled = { ...sourceTrack.raw, title }
+      const choice = playlistTrack.draftIcon
+      if (choice?.mode === 'icon') {
+        return withDisplayIcon(titled, `yoto:#${choice.mediaId}`)
+      }
+      if (choice?.mode === 'none') {
+        if (retained.length > 1) {
+          throw new Error(`Track "${playlistTrack.title}" cannot clear a shared chapter icon.`)
+        }
+        return withDisplayIcon(titled, null)
+      }
+      if (choice?.mode === 'chapter') return withoutDisplayIcon(titled)
+      return titled
     })
     const originalSingleTrack = sourceChapter.tracks.length === 1
     const chapterFollowedTrackTitle = originalSingleTrack
       && sourceChapter.raw.title === sourceChapter.tracks[0]!.raw.title
+    const onlyChoice = retained.length === 1
+      ? playlist[retained[0]!.playlistIndex]!.draftIcon
+      : undefined
+    const chapter = onlyChoice?.mode === 'icon'
+      ? withDisplayIcon(sourceChapter.raw, `yoto:#${onlyChoice.mediaId}`)
+      : onlyChoice?.mode === 'none'
+        ? withDisplayIcon(sourceChapter.raw, null)
+        : sourceChapter.raw
     units.push({
       playlistIndex: retained[0]!.playlistIndex,
       chapter: {
-        ...sourceChapter.raw,
+        ...chapter,
         ...(chapterFollowedTrackTitle ? { title: tracks[0]!.title } : {}),
         tracks,
       },
@@ -432,7 +501,7 @@ export function buildSaveAsContent(
       title: playlist[index]!.title,
       overlayLabel: String(index + 1),
       tracks: [payload],
-      display: playlist[index]!.chapterDisplay ?? payload.display ?? { icon16x16: null },
+      display: payload.display ?? { icon16x16: null },
     }
     if (action.kind === 'extract-youtube') {
       provenanceUpdates.push({

@@ -110,4 +110,58 @@ describe('Save As draft preparation', () => {
     assert.equal(sourceSnapshot.title, 'Source title')
     assert.deepEqual(sourceSnapshot.content.grouping, { nested: ['chapter-a'] })
   })
+
+  it('assigns fresh draft identities and projects materialized icon changes into the visible baseline', () => {
+    const sourceSnapshot = source()
+    const first = prepareSaveAsDraft({
+      source: sourceSnapshot,
+      sourceReference: { cardId: 'source-card', expectedRevision: 'revision-1' },
+      title: 'Source title',
+      playlist: [{
+        ...track(),
+        rawIconState: { kind: 'absent' },
+        chapterRawIconState: { kind: 'absent' },
+      }],
+      mutations: [{
+        kind: 'set-track-icon',
+        chapterKey: 'chapter-a',
+        trackKey: 'track-a',
+        expectedChapterIcon: { kind: 'absent' },
+        expectedTrackIcon: { kind: 'absent' },
+        mode: 'icon',
+        mediaId: 'M'.repeat(43),
+      }],
+    })
+    const second = prepareSaveAsDraft({
+      source: sourceSnapshot,
+      sourceReference: { cardId: 'source-card', expectedRevision: 'revision-1' },
+      title: 'Source title',
+      playlist: [track()],
+      mutations: [],
+    })
+
+    assert.notEqual(first.playlist[0]!.draftTrackId, second.playlist[0]!.draftTrackId)
+    assert.equal(first.playlist[0]!.draftTrackId, first.baseline[0]!.draftTrackId)
+    assert.deepEqual(first.playlist[0]!.rawIconState, {
+      kind: 'present', value: `yoto:#${'M'.repeat(43)}`,
+    })
+    assert.deepEqual(first.playlist[0]!.chapterRawIconState, {
+      kind: 'present', value: `yoto:#${'M'.repeat(43)}`,
+    })
+    assert.equal(sourceSnapshot.content.chapters instanceof Array, true)
+  })
+
+  it('restores the detached icon baseline when post-detach choices are reset', () => {
+    const draft = prepareSaveAsDraft({
+      source: source(),
+      sourceReference: { cardId: 'source-card', expectedRevision: 'revision-1' },
+      title: 'Source title',
+      playlist: [track()],
+      mutations: [],
+    })
+    draft.playlist[0]!.draftIcon = { mode: 'none' }
+    const reset = structuredClone(draft.baseline)
+    assert.equal(reset[0]!.draftIcon, undefined)
+    assert.equal(reset[0]!.draftTrackId, draft.playlist[0]!.draftTrackId)
+  })
 })

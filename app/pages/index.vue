@@ -96,6 +96,7 @@ import { DragDropProvider, type DragEndEvent, type DragOverEvent, type DragStart
 import { isSortable, isSortableOperation } from '@dnd-kit/vue/sortable'
 import type { PlaylistTrack } from '~/components/playlist/types'
 import { pickerVideoToPlaylistTrack } from '~/components/playlist/types'
+import { assignFreshDraftTrackIds } from '#shared/myo-editor/draftTrackIconAssignment'
 import {
   PLAYLIST_DROPZONE_ID,
   configurePlaylistDndPlugins,
@@ -201,13 +202,17 @@ function getItemData(entity: { data?: unknown } | null | undefined): DndItemData
 function insertTrack(track: PlaylistTrack, atIndex?: number): boolean {
   if (playlist.value.some(item => item.id === track.id)) return false
 
+  const row = isNewPlaylist.value
+    ? assignFreshDraftTrackIds([track])[0]!
+    : track
+
   if (atIndex === undefined || atIndex < 0 || atIndex >= playlist.value.length) {
-    playlist.value = [...playlist.value, track]
+    playlist.value = [...playlist.value, row]
     return true
   }
 
   const next = [...playlist.value]
-  next.splice(atIndex, 0, track)
+  next.splice(atIndex, 0, row)
   playlist.value = next
   return true
 }

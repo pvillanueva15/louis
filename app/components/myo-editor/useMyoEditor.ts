@@ -1,8 +1,9 @@
-import type { InjectionKey } from 'vue'
+import { toRaw, type InjectionKey } from 'vue'
 import type { PlaylistTrack } from '~/components/playlist/types'
 import {
   classifyCreateStartFailure,
   cloneCardSaveSnapshot,
+  cloneStructuredSnapshot,
   type CardSaveSnapshot,
   type ClientSaveIdentity,
   type ClientSaveTarget,
@@ -12,6 +13,7 @@ import {
   notifyConfirmedCardUpdated,
   notifyConfirmedPlaylistCreated,
   resetEditorTitle,
+  resolveCreateOutcomeUncertainAfterReset,
   resolveClientSaveTarget,
   resolveSavedCardId,
   shouldBlockEditorNavigation,
@@ -24,6 +26,13 @@ import type {
   SaveJobPhase,
 } from '#shared/myo-editor/types'
 import { prepareSaveAsDraft } from '#shared/myo-editor/saveAsDraft'
+import {
+  assignFreshDraftTrackIds,
+  effectiveDraftTrackIcon,
+  isDraftTrackId,
+  stageDraftTrackIconChoice,
+} from '#shared/myo-editor/draftTrackIconAssignment'
+import type { DraftTrackIconChoice } from '#shared/myo-editor/types'
 import {
   effectiveTrackIcon,
   resetTrackIconAssignments,
@@ -128,7 +137,7 @@ export interface MyoEditorContext {
   rawTrackUndo: Ref<RawTrackUndoToken | null>
   isDirty: ComputedRef<boolean>
   trackIconAssignments: Ref<StagedTrackIconAssignment[]>
-  stageTrackIcon: (track: PlaylistTrack, selection: TrackIconSelection) => void
+  stageTrackIcon: (track: PlaylistTrack, selection: TrackIconSelection | DraftTrackIconChoice) => void
   stageTrackTitle: (track: PlaylistTrack, title: string) => void
   removeTrack: (track: PlaylistTrack) => void
   undoTrackRemoval: () => void
@@ -153,7 +162,11 @@ export interface MyoEditorContext {
 export const MYO_EDITOR_KEY: InjectionKey<MyoEditorContext> = Symbol('myoEditor')
 
 function clonePlaylist(playlist: PlaylistTrack[]): PlaylistTrack[] {
-  return playlist.map(item => ({ ...item }))
+  return cloneStructuredSnapshot(playlist, toRaw)
+}
+
+function discardDraftTrackState(playlist: PlaylistTrack[]): PlaylistTrack[] {
+  return playlist.map(({ draftTrackId: _draftTrackId, draftIcon: _draftIcon, ...track }) => track)
 }
 
 function isTerminalStatus(status: SaveJobPhase): boolean {
@@ -234,6 +247,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   const saveAsMutations = ref<CardMutation[]>([])
   const isPodcast = ref(false)
   const loading = ref(false)
+  const createStarting = ref(false)
   const errorMessage = ref('')
   const createOutcomeUncertain = ref(false)
   const deletionOutcomeUncertain = ref(false)
@@ -349,6 +363,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   })
 
   const backgroundSaveActive = computed(() => {
+    if (isNewPlaylist.value && createStarting.value) return true
     const state = selectedSaveState.value
     return Boolean(state && !isTerminalStatus(state.status))
   })
@@ -417,7 +432,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function restoreSnapshot(snapshot: CardSaveSnapshot) {
-    const restored = cloneCardSaveSnapshot(snapshot)
+    const restored = cloneCardSaveSnapshot(snapshot, toRaw)
     playlist.value = restored.playlist
     baselinePlaylist.value = restored.baseline
     cardTitle.value = restored.cardTitle
@@ -446,14 +461,35 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     resetRawTrackStages()
   }
 
-  function stageTrackIcon(track: PlaylistTrack, selection: TrackIconSelection) {
+  function stageTrackIcon(track: PlaylistTrack, selection: TrackIconSelection | DraftTrackIconChoice) {
+    if (isNewPlaylist.value) {
+      if (
+        isPodcast.value
+        || loading.value
+        || isPlaylistLocked.value
+        || !isDraftTrackId(track.draftTrackId)
+      ) return
+      const choice: DraftTrackIconChoice = selection.mode === 'icon'
+        ? { mode: 'icon', mediaId: selection.mediaId }
+        : selection.mode === 'inherit'
+          ? { mode: 'chapter' }
+          : selection
+      playlist.value = stageDraftTrackIconChoice(
+        playlist.value,
+        baselinePlaylist.value,
+        track.draftTrackId,
+        choice,
+      )
+      errorMessage.value = ''
+      return
+    }
     if (
-      isNewPlaylist.value
-      || isPodcast.value
+      isPodcast.value
       || !rawTrackEditingSupported.value
       || loading.value
       || isPlaylistLocked.value
     ) return
+    if (selection.mode === 'none' || selection.mode === 'chapter') return
     trackIconAssignments.value = stageTrackIconAssignment(
       trackIconAssignments.value,
       track,
@@ -587,7 +623,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   }
 
   function getEffectiveTrackIcon(track: PlaylistTrack): EffectiveTrackIcon {
-    return effectiveTrackIcon(track, trackIconAssignments.value)
+    return isNewPlaylist.value
+      ? effectiveDraftTrackIcon(track)
+      : effectiveTrackIcon(track, trackIconAssignments.value)
   }
 
   async function finalizeSaveSuccess(cardId: string, titleFallback?: string) {
@@ -682,7 +720,8 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       clearProgressTracking(saveKey)
       maxOverallProgressBySaveKey.set(cardId, state.progress)
       activeSaves.value.set(cardId, { ...state, saveKey: cardId, cardId })
-      baselinePlaylist.value = clonePlaylist(state.snapshot.playlist)
+      playlist.value = discardDraftTrackState(state.snapshot.playlist)
+      baselinePlaylist.value = clonePlaylist(playlist.value)
       cardTitle.value = state.snapshot.cardTitle
       touchActiveSaves()
     }
@@ -816,7 +855,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       progress: 0,
       operationProgress: 0,
       tracks: [],
-      snapshot: cloneCardSaveSnapshot(snapshot),
+      snapshot: cloneCardSaveSnapshot(snapshot, toRaw),
       startedAt,
     }
     maxOverallProgressBySaveKey.set(identity.saveKey, 0)
@@ -1117,7 +1156,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     mutations.push(...trackRemovalAssignments.value.map(({ mutation }) => mutation))
 
     try {
-      const draft = prepareSaveAsDraft({
+      const draft = prepareSaveAsDraft(cloneStructuredSnapshot({
         source: originalCardDetail.value.saveAsSource,
         sourceReference: {
           cardId: originalCardDetail.value.cardId,
@@ -1126,7 +1165,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
         title: cardTitle.value,
         playlist: playlist.value,
         mutations,
-      })
+      }, toRaw))
 
       selectedCardId.value = null
       isNewPlaylist.value = true
@@ -1197,7 +1236,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       baselineCardTitle.value,
     )
     errorMessage.value = ''
-    if (isNewPlaylist.value) createOutcomeUncertain.value = false
+    createOutcomeUncertain.value = resolveCreateOutcomeUncertainAfterReset(
+      createOutcomeUncertain.value,
+    )
   }
 
   function appendTracks(
@@ -1234,7 +1275,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       incomingKeys.add(key)
     }
 
-    playlist.value = [...playlist.value, ...clonePlaylist(tracks)]
+    const clonedTracks = clonePlaylist(tracks)
+    const added = isNewPlaylist.value
+      ? assignFreshDraftTrackIds(clonedTracks)
+      : clonedTracks
+    playlist.value = [...playlist.value, ...added]
     errorMessage.value = ''
     return { ok: true, added: tracks.length }
   }
@@ -1266,9 +1311,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     }
 
     errorMessage.value = ''
-    const snapshot: CardSaveSnapshot = {
-      playlist: clonePlaylist(playlist.value),
-      baseline: [],
+    const snapshot = cloneCardSaveSnapshot({
+      playlist: playlist.value,
+      baseline: baselinePlaylist.value,
       cardTitle: cardTitle.value.trim(),
       baselineCardTitle: '',
       cardRevision: '',
@@ -1279,9 +1324,10 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
             saveAsMutations: saveAsMutations.value,
           }
         : {}),
-    }
+    }, toRaw)
 
     try {
+      createStarting.value = true
       await startSaveJob({ operation: 'create' }, snapshot, {
         acknowledgeCapacityRisk: options?.acknowledgeCapacityRisk === true,
       })
@@ -1291,6 +1337,9 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
       createOutcomeUncertain.value = failure.outcomeUncertain
       errorMessage.value = failure.message
       playEvent('saveError')
+    }
+    finally {
+      createStarting.value = false
     }
   }
 
@@ -1380,13 +1429,13 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
 
     errorMessage.value = ''
 
-    const snapshot: CardSaveSnapshot = {
-      playlist: clonePlaylist(playlist.value),
-      baseline: clonePlaylist(baselinePlaylist.value),
+    const snapshot = cloneCardSaveSnapshot({
+      playlist: playlist.value,
+      baseline: baselinePlaylist.value,
       cardTitle: cardTitle.value.trim(),
       baselineCardTitle: baselineCardTitle.value,
       cardRevision: cardRevision.value,
-    }
+    }, toRaw)
 
     try {
       await startSaveJob({ operation: 'update', cardId }, snapshot, {

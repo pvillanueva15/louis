@@ -6,6 +6,7 @@ import {
   parseMutateCardRequest,
   type CardMutation,
 } from '../../shared/yoto/cardMutation.ts'
+import { parseDraftTrackIconPlaylist } from '../../shared/myo-editor/draftTrackIconAssignment.ts'
 
 type RawRecord = Record<string, unknown>
 
@@ -38,10 +39,19 @@ function parseSourceReference(value: unknown): SaveAsSourceReference | undefined
   }
 }
 
-function stripClientYotoReuse(value: unknown): PlaylistTrack {
+function sanitizeClientDraftTrack(value: unknown, saveAsDraft: boolean): PlaylistTrack {
   if (!isRecord(value)) return value as PlaylistTrack
   const sanitized = { ...value }
   delete sanitized.yotoReuse
+  if (!saveAsDraft) {
+    delete sanitized.chapterKey
+    delete sanitized.trackKey
+    delete sanitized.rawIconState
+    delete sanitized.chapterRawIconState
+    delete sanitized.chapterTrackCount
+    delete sanitized.chapterDisplay
+    delete sanitized.display
+  }
   return sanitized as unknown as PlaylistTrack
 }
 
@@ -68,11 +78,14 @@ export function parseCreateSaveRequest(value: unknown): ParsedCreateSaveRequest 
     }
   }
 
-  const playlist = Array.isArray(body.playlist) ? body.playlist : []
+  const rawPlaylist = Array.isArray(body.playlist) ? body.playlist : []
+  const saveAsDraft = Boolean(saveAsSourceReference)
+  const playlist = parseDraftTrackIconPlaylist(
+    rawPlaylist.map(value => sanitizeClientDraftTrack(value, saveAsDraft)),
+    { saveAsDraft },
+  )
   return {
-    playlist: saveAsSourceReference
-      ? playlist.map(stripClientYotoReuse)
-      : playlist as PlaylistTrack[],
+    playlist,
     cardTitle: typeof body.cardTitle === 'string' ? body.cardTitle.trim() : '',
     ...(saveAsSourceReference ? { saveAsSourceReference } : {}),
     saveAsMutations,

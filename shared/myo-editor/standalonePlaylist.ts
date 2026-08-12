@@ -27,27 +27,166 @@ export interface CardSaveSnapshot {
   saveAsMutations?: CardMutation[]
 }
 
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
+export type SnapshotUnwrap = (value: unknown) => unknown
+
+function defineSnapshotValue(
+  target: object,
+  key: string,
+  value: unknown,
+) {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  })
 }
 
-export function cloneCardSaveSnapshot(snapshot: CardSaveSnapshot): CardSaveSnapshot {
-  return {
-    playlist: snapshot.playlist.map(track => ({ ...track })),
-    baseline: snapshot.baseline.map(track => ({ ...track })),
-    cardTitle: snapshot.cardTitle,
-    baselineCardTitle: snapshot.baselineCardTitle,
-    cardRevision: snapshot.cardRevision,
-    ...(snapshot.saveAsSource
-      ? { saveAsSource: cloneJson(snapshot.saveAsSource) }
-      : {}),
-    ...(snapshot.saveAsSourceReference
-      ? { saveAsSourceReference: { ...snapshot.saveAsSourceReference } }
-      : {}),
-    ...(snapshot.saveAsMutations
-      ? { saveAsMutations: cloneJson(snapshot.saveAsMutations) }
-      : {}),
+function unwrapSnapshotValue(
+  value: unknown,
+  unwrap: SnapshotUnwrap,
+  seen: WeakMap<object, unknown>,
+): unknown {
+  const raw = unwrap(value)
+  if (raw === null || typeof raw !== 'object') return raw
+
+  const existing = seen.get(raw)
+  if (existing !== undefined) return existing
+
+  if (Array.isArray(raw)) {
+    const unwrapped: unknown[] = new Array(raw.length)
+    seen.set(raw, unwrapped)
+    for (const key of Object.keys(raw)) {
+      defineSnapshotValue(
+        unwrapped,
+        key,
+        unwrapSnapshotValue(
+          (raw as unknown as Record<string, unknown>)[key],
+          unwrap,
+          seen,
+        ),
+      )
+    }
+    return unwrapped
   }
+
+  if (raw instanceof Map) {
+    const unwrapped = new Map<unknown, unknown>()
+    seen.set(raw, unwrapped)
+    for (const [key, item] of raw) {
+      unwrapped.set(
+        unwrapSnapshotValue(key, unwrap, seen),
+        unwrapSnapshotValue(item, unwrap, seen),
+      )
+    }
+    return unwrapped
+  }
+
+  if (raw instanceof Set) {
+    const unwrapped = new Set<unknown>()
+    seen.set(raw, unwrapped)
+    for (const item of raw) unwrapped.add(unwrapSnapshotValue(item, unwrap, seen))
+    return unwrapped
+  }
+
+  const prototype = Object.getPrototypeOf(raw)
+  if (prototype === Object.prototype || prototype === null) {
+    const unwrapped = Object.create(prototype) as Record<string, unknown>
+    seen.set(raw, unwrapped)
+    for (const key of Object.keys(raw)) {
+      defineSnapshotValue(
+        unwrapped,
+        key,
+        unwrapSnapshotValue(
+          (raw as Record<string, unknown>)[key],
+          unwrap,
+          seen,
+        ),
+      )
+    }
+    return unwrapped
+  }
+
+  return raw
+}
+
+function restoreNullPrototypeRecords(
+  source: unknown,
+  cloned: unknown,
+  seen: WeakMap<object, object>,
+) {
+  if (
+    source === null
+    || cloned === null
+    || typeof source !== 'object'
+    || typeof cloned !== 'object'
+  ) return
+
+  if (seen.has(source)) return
+  seen.set(source, cloned)
+
+  if (Object.getPrototypeOf(source) === null) {
+    Object.setPrototypeOf(cloned, null)
+  }
+
+  if (source instanceof Map && cloned instanceof Map) {
+    const sourceEntries = source.entries()
+    const clonedEntries = cloned.entries()
+    while (true) {
+      const sourceEntry = sourceEntries.next()
+      const clonedEntry = clonedEntries.next()
+      if (sourceEntry.done || clonedEntry.done) return
+      restoreNullPrototypeRecords(sourceEntry.value[0], clonedEntry.value[0], seen)
+      restoreNullPrototypeRecords(sourceEntry.value[1], clonedEntry.value[1], seen)
+    }
+  }
+
+  if (source instanceof Set && cloned instanceof Set) {
+    const sourceValues = source.values()
+    const clonedValues = cloned.values()
+    while (true) {
+      const sourceValue = sourceValues.next()
+      const clonedValue = clonedValues.next()
+      if (sourceValue.done || clonedValue.done) return
+      restoreNullPrototypeRecords(sourceValue.value, clonedValue.value, seen)
+    }
+  }
+
+  for (const key of Object.keys(source)) {
+    const sourceDescriptor = Object.getOwnPropertyDescriptor(source, key)
+    const clonedDescriptor = Object.getOwnPropertyDescriptor(cloned, key)
+    if (
+      sourceDescriptor
+      && clonedDescriptor
+      && 'value' in sourceDescriptor
+      && 'value' in clonedDescriptor
+    ) {
+      restoreNullPrototypeRecords(
+        sourceDescriptor.value,
+        clonedDescriptor.value,
+        seen,
+      )
+    }
+  }
+}
+
+export function cloneStructuredSnapshot<T>(
+  value: T,
+  unwrap?: SnapshotUnwrap,
+): T {
+  const cloneable = unwrap
+    ? unwrapSnapshotValue(value, unwrap, new WeakMap())
+    : value
+  const cloned = structuredClone(cloneable) as T
+  restoreNullPrototypeRecords(cloneable, cloned, new WeakMap())
+  return cloned
+}
+
+export function cloneCardSaveSnapshot(
+  snapshot: CardSaveSnapshot,
+  unwrap?: SnapshotUnwrap,
+): CardSaveSnapshot {
+  return cloneStructuredSnapshot(snapshot, unwrap)
 }
 
 export type ClientSaveIdentity =
@@ -93,6 +232,12 @@ export function resetEditorTitle(
   return isSaveAsDraft
     ? baselineTitle
     : resetCardTitle(isNewPlaylist, baselineTitle)
+}
+
+export function resolveCreateOutcomeUncertainAfterReset(
+  createOutcomeUncertain: boolean,
+): boolean {
+  return createOutcomeUncertain
 }
 
 export function resolveClientSaveTarget(target: ClientSaveTarget): ClientSaveIdentity {
