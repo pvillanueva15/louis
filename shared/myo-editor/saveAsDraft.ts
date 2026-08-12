@@ -5,8 +5,11 @@ import type {
 } from './types.ts'
 import {
   applyCardMutations,
+  mapRawIconState,
   type CardMutation,
 } from '../yoto/cardMutation.ts'
+import { assignFreshDraftTrackIds } from './draftTrackIconAssignment.ts'
+import { cloneStructuredSnapshot } from './standalonePlaylist.ts'
 
 export interface PreparedSaveAsDraft {
   title: string
@@ -18,11 +21,45 @@ export interface PreparedSaveAsDraft {
 }
 
 function clonePlaylist(playlist: PlaylistTrack[]): PlaylistTrack[] {
-  return cloneJson(playlist)
+  return cloneStructuredSnapshot(playlist)
 }
 
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function projectedPlaylist(
+  playlist: PlaylistTrack[],
+  source: SaveAsSourceSnapshot,
+): PlaylistTrack[] {
+  const chapters = Array.isArray(source.content.chapters) ? source.content.chapters : []
+  return playlist.map((track) => {
+    if (!track.chapterKey || !track.trackKey) return track
+    const chapter = chapters.find(value => isRecord(value) && value.key === track.chapterKey)
+    if (!isRecord(chapter) || !Array.isArray(chapter.tracks)) return track
+    const sourceTrack = chapter.tracks.find(value => isRecord(value) && value.key === track.trackKey)
+    if (!isRecord(sourceTrack)) return track
+    const chapterDisplay = isRecord(chapter.display) ? chapter.display : undefined
+    const trackDisplay = isRecord(sourceTrack.display) ? sourceTrack.display : undefined
+    return {
+      ...track,
+      rawIconState: mapRawIconState(trackDisplay),
+      chapterRawIconState: mapRawIconState(chapterDisplay),
+      chapterDisplay: chapterDisplay && Object.hasOwn(chapterDisplay, 'icon16x16')
+        ? { icon16x16: typeof chapterDisplay.icon16x16 === 'string' ? chapterDisplay.icon16x16 : null }
+        : undefined,
+      ...(track.yotoReuse
+        ? {
+            yotoReuse: {
+              ...track.yotoReuse,
+              display: trackDisplay && Object.hasOwn(trackDisplay, 'icon16x16')
+                ? { icon16x16: typeof trackDisplay.icon16x16 === 'string' ? trackDisplay.icon16x16 : null }
+                : undefined,
+            },
+          }
+        : {}),
+    }
+  })
 }
 
 export function copyOfTitle(title: string): string {
@@ -36,7 +73,7 @@ export function prepareSaveAsDraft(input: {
   playlist: PlaylistTrack[]
   mutations: CardMutation[]
 }): PreparedSaveAsDraft {
-  const source = cloneJson(input.source)
+  const source = cloneStructuredSnapshot(input.source)
   const materialized = input.mutations.length > 0
     ? applyCardMutations(source, input.mutations)
     : source
@@ -47,7 +84,7 @@ export function prepareSaveAsDraft(input: {
       ? { metadata: materialized.metadata as SaveAsSourceSnapshot['metadata'] }
       : {}),
   }
-  const playlist = clonePlaylist(input.playlist)
+  const playlist = assignFreshDraftTrackIds(projectedPlaylist(clonePlaylist(input.playlist), detachedSource))
 
   return {
     title: copyOfTitle(input.title),
@@ -55,6 +92,6 @@ export function prepareSaveAsDraft(input: {
     baseline: clonePlaylist(playlist),
     source: detachedSource,
     sourceReference: { ...input.sourceReference },
-    mutations: structuredClone(input.mutations),
+    mutations: cloneStructuredSnapshot(input.mutations),
   }
 }

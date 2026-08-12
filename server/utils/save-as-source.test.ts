@@ -10,6 +10,7 @@ import {
   buildSaveAsPlan,
 } from './save-as-content.ts'
 import { resolveAuthoritativeSaveAsSource } from './save-as-source.ts'
+import { playlistToYotoContent } from '../../shared/myo-editor/playlistToYotoContent.ts'
 
 function sourceCard(): RawYotoCard {
   return {
@@ -47,6 +48,7 @@ function playlist(title = 'Original title'): PlaylistTrack[] {
     subtitle: 'Yoto upload',
     thumbnailUrl: '',
     source: 'yoto-upload',
+    draftTrackId: '11111111-1111-4111-8111-111111111111',
     chapterKey: 'chapter-a',
     trackKey: 'track-a',
     duration: 60,
@@ -61,6 +63,56 @@ function playlist(title = 'Original title'): PlaylistTrack[] {
 }
 
 describe('Save As route and job source boundary', () => {
+  it('removes forged retained-source fields before standalone serialization', () => {
+    const request = parseCreateSaveRequest({
+      playlist: [{
+        id: 'standalone-video',
+        title: 'Standalone video',
+        subtitle: 'YouTube',
+        thumbnailUrl: '',
+        source: 'app-youtube',
+        youtubeId: 'standalone-video',
+        draftTrackId: '44444444-4444-4444-8444-444444444444',
+        chapterKey: 'forged-chapter',
+        trackKey: 'forged-track',
+        rawIconState: { kind: 'present', value: 'yoto:#forged-track-state' },
+        chapterRawIconState: { kind: 'present', value: 'yoto:#forged-chapter-state' },
+        chapterTrackCount: 1,
+        chapterDisplay: { icon16x16: 'yoto:#forged-chapter-display' },
+        display: { icon16x16: 'yoto:#forged-direct-display' },
+        yotoReuse: {
+          trackUrl: 'yoto:#forged-audio',
+          type: 'audio',
+          format: 'aac',
+          duration: 1,
+          fileSize: 1,
+          display: { icon16x16: 'yoto:#forged-track-display' },
+        },
+      }],
+      cardTitle: 'Standalone',
+    })
+    const built = playlistToYotoContent(
+      request.cardTitle,
+      request.playlist,
+      [{ kind: 'extract-youtube', youtubeId: 'standalone-video', playlistIndex: 0 }],
+      new Map([[0, {
+        transcodedSha256: 'trusted-audio',
+        transcodedInfo: { duration: 10, fileSize: 20, format: 'aac' },
+      }]]),
+    )
+
+    assert.equal(built.chapters[0]!.display.icon16x16, null)
+    assert.equal(built.chapters[0]!.tracks[0]!.display?.icon16x16, null)
+    assert.equal(request.playlist[0]!.chapterKey, undefined)
+    assert.equal(request.playlist[0]!.trackKey, undefined)
+    assert.equal(request.playlist[0]!.rawIconState, undefined)
+    assert.equal(request.playlist[0]!.chapterRawIconState, undefined)
+    assert.equal(request.playlist[0]!.chapterTrackCount, undefined)
+    assert.equal(request.playlist[0]!.chapterDisplay, undefined)
+    assert.equal(request.playlist[0]!.yotoReuse, undefined)
+    assert.equal('display' in request.playlist[0]!, false)
+  })
+
   it('rejects browser-supplied raw source documents at the route contract', () => {
     assert.throws(
       () => parseCreateSaveRequest({
@@ -139,6 +191,7 @@ describe('Save As route and job source boundary', () => {
         subtitle: 'Stream',
         thumbnailUrl: '',
         source: 'stream',
+        draftTrackId: '22222222-2222-4222-8222-222222222222',
         yotoReuse: {
           trackUrl: 'https://attacker.example/live',
           type: 'stream',
@@ -153,6 +206,7 @@ describe('Save As route and job source boundary', () => {
         subtitle: 'Yoto upload',
         thumbnailUrl: '',
         source: 'yoto-upload',
+        draftTrackId: '33333333-3333-4333-8333-333333333333',
         yotoReuse: {
           trackUrl: 'yoto:#foreign-media',
           type: 'audio',
@@ -233,5 +287,57 @@ describe('Save As route and job source boundary', () => {
       /same-account fetch failed/,
     )
     assert.equal(postCount, 0)
+  })
+
+  it('rejects missing or duplicate draft IDs and malformed or forged icon choices', () => {
+    const reference = {
+      cardId: 'source-card',
+      expectedRevision: deriveRawCardRevision(sourceCard()),
+    }
+    const base = playlist()[0]!
+    assert.throws(() => parseCreateSaveRequest({
+      playlist: [{ ...base, draftTrackId: undefined }],
+      cardTitle: 'Copy',
+      saveAsSourceReference: reference,
+    }), /missing its local identity/)
+    assert.throws(() => parseCreateSaveRequest({
+      playlist: [base, { ...base }],
+      cardTitle: 'Copy',
+      saveAsSourceReference: reference,
+    }), /duplicate local track identities/)
+    assert.throws(() => parseCreateSaveRequest({
+      playlist: [{ ...base, draftIcon: { mode: 'icon', mediaId: 'bad' } }],
+      cardTitle: 'Copy',
+      saveAsSourceReference: reference,
+    }), /malformed/)
+    assert.throws(() => parseCreateSaveRequest({
+      playlist: [{
+        ...base,
+        chapterKey: undefined,
+        trackKey: undefined,
+        draftIcon: { mode: 'chapter' },
+      }],
+      cardTitle: 'Copy',
+      saveAsSourceReference: reference,
+    }), /retained Save As tracks/)
+  })
+
+  it('preserves the exact validated draft identity and icon choice in the create request', () => {
+    const draft = playlist()[0]!
+    draft.draftIcon = { mode: 'icon', mediaId: 'M'.repeat(43) }
+    const request = parseCreateSaveRequest({
+      playlist: [draft],
+      baselinePlaylist: [{ ...draft, draftIcon: undefined }],
+      cardTitle: 'Copy',
+      saveAsSourceReference: {
+        cardId: 'source-card',
+        expectedRevision: deriveRawCardRevision(sourceCard()),
+      },
+    })
+    assert.equal(request.playlist[0]!.draftTrackId, draft.draftTrackId)
+    assert.deepEqual(request.playlist[0]!.draftIcon, {
+      mode: 'icon', mediaId: 'M'.repeat(43),
+    })
+    assert.equal(request.playlist[0]!.yotoReuse, undefined)
   })
 })

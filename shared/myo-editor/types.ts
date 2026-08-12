@@ -89,6 +89,11 @@ export interface YotoCardDetail {
   saveAsSource: SaveAsSourceSnapshot
 }
 
+export type DraftTrackIconChoice =
+  | { mode: 'icon'; mediaId: string }
+  | { mode: 'none' }
+  | { mode: 'chapter' }
+
 export interface PlaylistTrack {
   id: string
   title: string
@@ -102,6 +107,10 @@ export interface PlaylistTrack {
   chapterRawIconState?: RawIconState
   chapterTrackCount?: number
   duration?: number
+  /** Local identity for a row in an unsaved standalone or Save As draft. */
+  draftTrackId?: string
+  /** Local-only icon intent applied when the draft is created. */
+  draftIcon?: DraftTrackIconChoice
   /** Parent chapter icon from the loaded card (preserved on save). */
   chapterDisplay?: { icon16x16: string | null }
   /** Cached Yoto fields for reuse on save (avoids ambiguous lookups). */

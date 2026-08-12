@@ -3,14 +3,14 @@ import type {
   SaveTrackAction,
   TranscodedAudioResult,
   YotoTrackPayload,
-} from './types'
-import { buildProvenance } from './parseProvenance'
-import { resolveDisplayIcon, toYotoTrackPayload } from './yotoTrackPayload'
-import { YOTO_CARDS_CONTENT_VERSION } from './types'
+} from './types.ts'
+import { buildProvenance } from './parseProvenance.ts'
+import { resolveDisplayIcon, toYotoTrackPayload } from './yotoTrackPayload.ts'
+import { YOTO_CARDS_CONTENT_VERSION } from './types.ts'
 import {
   normalizeYotoAudioFormat,
   yotoChannelsOrStereo,
-} from './transcodedTrackDefaults'
+} from './transcodedTrackDefaults.ts'
 
 const TRACK_KEY = '01'
 
@@ -40,6 +40,21 @@ function trackFromTranscoded(
 }
 
 function displaysForPlaylistTrack(playlistTrack: PlaylistTrack) {
+  if (playlistTrack.draftIcon?.mode === 'chapter') {
+    throw new Error('Use chapter icon is not available for standalone draft tracks.')
+  }
+  if (playlistTrack.draftIcon?.mode === 'icon') {
+    const display = { icon16x16: `yoto:#${playlistTrack.draftIcon.mediaId}` }
+    return { chapter: display, track: display }
+  }
+  if (playlistTrack.draftIcon?.mode === 'none') {
+    const display = { icon16x16: null }
+    return { chapter: display, track: display }
+  }
+  if (playlistTrack.draftTrackId) {
+    const display = { icon16x16: null }
+    return { chapter: display, track: display }
+  }
   const trackDisplay = playlistTrack.yotoReuse?.display
   const chapterDisplay = playlistTrack.chapterDisplay
   return {

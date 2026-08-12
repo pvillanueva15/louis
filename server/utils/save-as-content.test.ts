@@ -512,4 +512,140 @@ describe('Save As content creation', () => {
       /Keep the tracks from nested chapter "Nested chapter" together/,
     )
   })
+
+  it('overlays only the selected retained track in a multi-track chapter', () => {
+    const snapshot = source()
+    const chapters = snapshot.content.chapters as Array<Record<string, unknown>>
+    const sourceTracks = chapters[0]!.tracks as Array<Record<string, unknown>>
+    sourceTracks[0]!.display = { icon16x16: 'yoto:#old-track', animation: 'keep' }
+    const playlist = sourcePlaylist()
+    playlist[0]!.draftIcon = { mode: 'icon', mediaId: 'I'.repeat(43) }
+    const plan = buildSaveAsPlan(playlist, snapshot)
+    const built = buildSaveAsContent(playlist, snapshot, plan.tracks, new Map())
+    const builtChapters = built.content.chapters as Array<Record<string, unknown>>
+    const builtTracks = builtChapters[0]!.tracks as Array<Record<string, unknown>>
+
+    assert.deepEqual(builtChapters[0]!.display, { icon16x16: 'yoto:#chapter-icon' })
+    assert.deepEqual(builtTracks[0]!.display, {
+      icon16x16: `yoto:#${'I'.repeat(43)}`,
+      animation: 'keep',
+    })
+    assert.equal(builtTracks[1]!.display, undefined)
+    assert.deepEqual(sourceTracks[0]!.display, { icon16x16: 'yoto:#old-track', animation: 'keep' })
+  })
+
+  it('rejects malformed authoritative chapter and track displays before building a copy', () => {
+    for (const target of ['chapter', 'track'] as const) {
+      const snapshot = source()
+      const chapters = snapshot.content.chapters as Array<Record<string, unknown>>
+      const sourceTracks = chapters[0]!.tracks as Array<Record<string, unknown>>
+      if (target === 'chapter') chapters[0]!.display = []
+      else sourceTracks[0]!.display = 'not-a-record'
+
+      assert.throws(() => {
+        const playlist = sourcePlaylist()
+        const plan = buildSaveAsPlan(playlist, snapshot)
+        buildSaveAsContent(playlist, snapshot, plan.tracks, new Map())
+      }, /display.*malformed/i)
+    }
+  })
+
+  it('removes only icon16x16 for a chapter choice and preserves display siblings', () => {
+    const snapshot = source()
+    const chapters = snapshot.content.chapters as Array<Record<string, unknown>>
+    const sourceTracks = chapters[0]!.tracks as Array<Record<string, unknown>>
+    sourceTracks[0]!.display = { icon16x16: 'yoto:#old-track', animation: 'keep' }
+    const playlist = sourcePlaylist()
+    playlist[0]!.draftIcon = { mode: 'chapter' }
+    const plan = buildSaveAsPlan(playlist, snapshot)
+    const built = buildSaveAsContent(playlist, snapshot, plan.tracks, new Map())
+    const builtTracks = ((built.content.chapters as Array<Record<string, unknown>>)[0]!.tracks) as Array<Record<string, unknown>>
+    assert.deepEqual(builtTracks[0]!.display, { animation: 'keep' })
+    assert.deepEqual((built.content.chapters as Array<Record<string, unknown>>)[0]!.display, {
+      icon16x16: 'yoto:#chapter-icon',
+    })
+  })
+
+  it('synchronizes retained one-track set and clear while preserving other raw fields', () => {
+    const snapshot = source()
+    const playlist = [sourcePlaylist()[0]!]
+    playlist[0]!.draftIcon = { mode: 'icon', mediaId: 'S'.repeat(43) }
+    let plan = buildSaveAsPlan(playlist, snapshot)
+    let built = buildSaveAsContent(playlist, snapshot, plan.tracks, new Map())
+    let chapter = (built.content.chapters as Array<Record<string, unknown>>)[0]!
+    let builtTrack = (chapter.tracks as Array<Record<string, unknown>>)[0]!
+    assert.equal((chapter.display as Record<string, unknown>).icon16x16, `yoto:#${'S'.repeat(43)}`)
+    assert.equal((builtTrack.display as Record<string, unknown>).icon16x16, `yoto:#${'S'.repeat(43)}`)
+    assert.deepEqual(builtTrack.unknownTrackField, { keep: 'alpha' })
+
+    playlist[0]!.draftIcon = { mode: 'none' }
+    plan = buildSaveAsPlan(playlist, snapshot)
+    built = buildSaveAsContent(playlist, snapshot, plan.tracks, new Map())
+    chapter = (built.content.chapters as Array<Record<string, unknown>>)[0]!
+    builtTrack = (chapter.tracks as Array<Record<string, unknown>>)[0]!
+    assert.equal((chapter.display as Record<string, unknown>).icon16x16, null)
+    assert.equal((builtTrack.display as Record<string, unknown>).icon16x16, null)
+  })
+
+  it('preserves the source chapter for a prior chapter choice after removal to one track', () => {
+    const snapshot = source()
+    const playlist = [sourcePlaylist()[0]!]
+    playlist[0]!.draftIcon = { mode: 'chapter' }
+    const plan = buildSaveAsPlan(playlist, snapshot)
+    const built = buildSaveAsContent(playlist, snapshot, plan.tracks, new Map())
+    const chapter = (built.content.chapters as Array<Record<string, unknown>>)[0]!
+    const builtTrack = (chapter.tracks as Array<Record<string, unknown>>)[0]!
+    assert.deepEqual(chapter.display, { icon16x16: 'yoto:#chapter-icon' })
+    assert.deepEqual(builtTrack.display, {})
+  })
+
+  it('rejects none on shared chapters and chapter choices on new Save As rows', () => {
+    const snapshot = source()
+    const playlist = sourcePlaylist()
+    playlist[0]!.draftIcon = { mode: 'none' }
+    assert.match(buildSaveAsPlan(playlist, snapshot).errors[0] ?? '', /shared chapter icon/)
+
+    const added: PlaylistTrack = {
+      id: 'new-video',
+      title: 'New video',
+      subtitle: '',
+      thumbnailUrl: '',
+      source: 'app-youtube',
+      youtubeId: 'new-video',
+      draftIcon: { mode: 'chapter' },
+    }
+    assert.match(buildSaveAsPlan([added], snapshot).errors[0] ?? '', /cannot use a source chapter icon/)
+  })
+
+  it('sets and clears icons on new Save As rows as one-track chapters', () => {
+    const snapshot = source()
+    delete snapshot.metadata?.note
+    const added: PlaylistTrack = {
+      id: 'new-video',
+      title: 'New video',
+      subtitle: '',
+      thumbnailUrl: '',
+      source: 'app-youtube',
+      youtubeId: 'new-video',
+      draftIcon: { mode: 'icon', mediaId: 'N'.repeat(43) },
+    }
+    const uploads = new Map([[0, {
+      transcodedSha256: 'audio',
+      transcodedInfo: { duration: 10, fileSize: 20, format: 'aac' },
+    }]])
+    let plan = buildSaveAsPlan([added], snapshot)
+    let built = buildSaveAsContent([added], snapshot, plan.tracks, uploads)
+    let chapter = (built.content.chapters as Array<Record<string, unknown>>)[0]!
+    let builtTrack = (chapter.tracks as Array<Record<string, unknown>>)[0]!
+    assert.equal((chapter.display as Record<string, unknown>).icon16x16, `yoto:#${'N'.repeat(43)}`)
+    assert.equal((builtTrack.display as Record<string, unknown>).icon16x16, `yoto:#${'N'.repeat(43)}`)
+
+    added.draftIcon = { mode: 'none' }
+    plan = buildSaveAsPlan([added], snapshot)
+    built = buildSaveAsContent([added], snapshot, plan.tracks, uploads)
+    chapter = (built.content.chapters as Array<Record<string, unknown>>)[0]!
+    builtTrack = (chapter.tracks as Array<Record<string, unknown>>)[0]!
+    assert.equal((chapter.display as Record<string, unknown>).icon16x16, null)
+    assert.equal((builtTrack.display as Record<string, unknown>).icon16x16, null)
+  })
 })
