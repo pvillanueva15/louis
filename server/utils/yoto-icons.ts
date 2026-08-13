@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { Readable } from 'node:stream'
 import { inflateSync } from 'node:zlib'
 import {
+  normalizePersonalIcon,
   normalizePersonalIconList,
   normalizePersonalIconUpload,
   type PersonalIconListResponse,
@@ -411,6 +412,27 @@ export async function fetchPersonalIcons(
 ): Promise<PersonalIconListResponse> {
   const response = await request('/media/displayIcons/user/me', accessToken)
   const icons = normalizeContract(() => normalizePersonalIconList(response))
+  recordRecentYotoTokenValidation(accessToken)
+  return icons
+}
+
+export async function fetchPersonalIconSourceCandidates(
+  accessToken: string,
+  request: YotoIconRequest,
+): Promise<PersonalIconListResponse> {
+  const response = await request('/media/displayIcons/user/me', accessToken)
+  const icons = normalizeContract(() => {
+    if (
+      typeof response !== 'object'
+      || response === null
+      || !Array.isArray((response as Record<string, unknown>).displayIcons)
+    ) {
+      throw new Error('Yoto returned a malformed personal icon library.')
+    }
+    return {
+      icons: (response as { displayIcons: unknown[] }).displayIcons.map(normalizePersonalIcon),
+    }
+  })
   recordRecentYotoTokenValidation(accessToken)
   return icons
 }

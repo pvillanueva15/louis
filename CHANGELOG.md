@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Standalone My Icons can open a trusted personal icon in Icon Studio as an in-memory copy and upload the result without changing or assigning the source icon.
 - Per-track icon assignment, clearing, Reset, and rapid navigation for standalone and Save As drafts before Create.
 - Fast multi-track icon assignment from the playlist editor, with previous and next navigation.
 - Experimental paginated Yotoicons community search and import into the personal icon library.
@@ -25,6 +26,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 - In-process singleflight for concurrent downloads of the same YouTube id (preview stampede protection).
 
 ### Changed
+- Personal icon uploads now block blind retry after uncertain or accepted-but-unrefreshed outcomes until My Icons is explicitly refreshed.
 - Expected anon→cookies escalate and retries log at info level (not warn/error).
 - Long API errors use h3 `message` instead of `statusMessage` (avoids future sanitization warnings).
 - Demo runbook: cookies required on cloud IPs, `YTDLP_CACHE_BUST`, restart/job-loss notes, how to read yt-dlp logs.

@@ -3668,6 +3668,27 @@ body {
   box-shadow: 3px 3px 0 var(--color-maru-black);
 }
 
+.icon-library__edit-copy {
+  min-height: 2rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-maru-blue);
+  font-family: var(--font-maru);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 0.9;
+  text-align: center;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.icon-library__edit-copy:disabled {
+  color: var(--color-maru-gray);
+  cursor: default;
+  text-decoration: none;
+}
+
 .icon-library__item--newest {
   background: var(--color-maru-green-lighter);
   outline: 3px solid var(--color-maru-white);
@@ -3778,6 +3799,13 @@ body {
 .static-icon__heading {
   font-size: 1.8rem;
   line-height: 0.9;
+}
+
+.static-icon__reassurance {
+  margin-top: 0.35rem;
+  color: var(--color-maru-gray);
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .static-icon__file-drop {

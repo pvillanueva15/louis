@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import {
+  createIconStudioEditorState,
+  resolveIconStudioSourceAttempt,
+  type IconStudioEditorState,
+  type IconStudioSourceKind,
+  type PersonalIconEditorSource,
+} from './useIconLibrary'
+import {
   createStaticIconRenderPlan,
   inspectStaticIconSource,
   safeStaticIconFilename,
@@ -9,12 +16,17 @@ import {
 
 const props = withDefaults(defineProps<{
   busy?: boolean
+  copyMode?: boolean
+  initialSource?: PersonalIconEditorSource | null
 }>(), {
   busy: false,
+  copyMode: false,
+  initialSource: null,
 })
 
 const emit = defineEmits<{
   cancel: []
+  sourceReplaced: []
   upload: [blob: Blob, filename: string]
 }>()
 
@@ -39,13 +51,15 @@ const encoding = ref(false)
 let objectUrl: string | null = null
 let loadGeneration = 0
 let pointerStart: { x: number, y: number, panX: number, panY: number } | null = null
+let sourceKind: IconStudioSourceKind = props.initialSource ? 'personal' : 'empty'
 
 const hasImage = computed(() => sourceImage.value !== null)
 const safeFilename = computed(() => safeStaticIconFilename(filename.value))
 const locked = computed(() => props.busy || encoding.value || loading.value)
 
 function focusInitial() {
-  fileInput.value?.focus()
+  if (hasImage.value) cropCanvas.value?.focus()
+  else fileInput.value?.focus()
 }
 
 defineExpose({ focusInitial })
@@ -56,13 +70,31 @@ function clearObjectUrl() {
   objectUrl = null
 }
 
-function resetEdits() {
-  zoom.value = 1
-  panX.value = 0
-  panY.value = 0
-  backgroundMode.value = 'transparent'
-  backgroundColor.value = '#ffffff'
+function currentEditorState(): IconStudioEditorState<HTMLImageElement> {
+  return {
+    sourceKind,
+    source: sourceImage.value,
+    zoom: zoom.value,
+    panX: panX.value,
+    panY: panY.value,
+    backgroundMode: backgroundMode.value,
+    backgroundColor: backgroundColor.value,
+  }
+}
+
+function applyEditorState(state: IconStudioEditorState<HTMLImageElement>) {
+  sourceKind = state.sourceKind
+  sourceImage.value = state.source
+  zoom.value = state.zoom
+  panX.value = state.panX
+  panY.value = state.panY
+  backgroundMode.value = state.backgroundMode
+  backgroundColor.value = state.backgroundColor
   errorMessage.value = ''
+}
+
+function resetEdits() {
+  applyEditorState(createIconStudioEditorState(sourceKind, sourceImage.value))
 }
 
 function drawToCanvas(canvas: HTMLCanvasElement, size: number, includeBackground: boolean) {
@@ -120,6 +152,54 @@ function renderPreviews() {
   }
 }
 
+async function openSource(
+  source: Blob,
+  name: string,
+  nextSourceKind: IconStudioSourceKind = 'local',
+): Promise<{ opened: boolean, personalProvenanceCleared: boolean }> {
+  errorMessage.value = ''
+  loading.value = true
+  const generation = ++loadGeneration
+  const previousState = currentEditorState()
+  let nextObjectUrl: string | null = null
+
+  try {
+    validateStaticIconSource(source.type, source.size, 1, 1)
+    inspectStaticIconSource(source.type, new Uint8Array(await source.arrayBuffer()))
+    nextObjectUrl = URL.createObjectURL(source)
+    objectUrl = nextObjectUrl
+    const image = new Image()
+    image.src = nextObjectUrl
+    await image.decode()
+
+    if (generation !== loadGeneration) return { opened: false, personalProvenanceCleared: false }
+    validateStaticIconSource(source.type, source.size, image.naturalWidth, image.naturalHeight)
+    sourceWidth.value = image.naturalWidth
+    sourceHeight.value = image.naturalHeight
+    sourceName.value = name
+    filename.value = safeStaticIconFilename(name)
+    const transition = resolveIconStudioSourceAttempt(previousState, true, nextSourceKind, image)
+    applyEditorState(transition.state)
+    await nextTick()
+    renderPreviews()
+    cropCanvas.value?.focus()
+    return { opened: true, personalProvenanceCleared: transition.personalProvenanceCleared }
+  }
+  catch (error) {
+    if (generation !== loadGeneration) return { opened: false, personalProvenanceCleared: false }
+    applyEditorState(resolveIconStudioSourceAttempt(previousState, false).state)
+    errorMessage.value = error instanceof Error ? error.message : 'This image could not be opened.'
+    return { opened: false, personalProvenanceCleared: false }
+  }
+  finally {
+    if (generation === loadGeneration) loading.value = false
+    if (nextObjectUrl) {
+      URL.revokeObjectURL(nextObjectUrl)
+      if (objectUrl === nextObjectUrl) objectUrl = null
+    }
+  }
+}
+
 async function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   if (locked.value || loading.value) {
@@ -129,45 +209,9 @@ async function onFileChange(event: Event) {
   const file = input.files?.[0]
   if (!file) return
 
-  errorMessage.value = ''
-  loading.value = true
-  const generation = ++loadGeneration
-  clearObjectUrl()
-  let nextObjectUrl: string | null = null
-
-  try {
-    validateStaticIconSource(file.type, file.size, 1, 1)
-    inspectStaticIconSource(file.type, new Uint8Array(await file.arrayBuffer()))
-    nextObjectUrl = URL.createObjectURL(file)
-    objectUrl = nextObjectUrl
-    const image = new Image()
-    image.src = nextObjectUrl
-    await image.decode()
-
-    if (generation !== loadGeneration) return
-    validateStaticIconSource(file.type, file.size, image.naturalWidth, image.naturalHeight)
-    sourceImage.value = image
-    sourceWidth.value = image.naturalWidth
-    sourceHeight.value = image.naturalHeight
-    sourceName.value = file.name
-    filename.value = safeStaticIconFilename(file.name)
-    resetEdits()
-    await nextTick()
-    renderPreviews()
-  }
-  catch (error) {
-    if (generation !== loadGeneration) return
-    sourceImage.value = null
-    errorMessage.value = error instanceof Error ? error.message : 'This image could not be opened.'
-  }
-  finally {
-    if (generation === loadGeneration) loading.value = false
-    if (nextObjectUrl) {
-      URL.revokeObjectURL(nextObjectUrl)
-      if (objectUrl === nextObjectUrl) objectUrl = null
-    }
-    input.value = ''
-  }
+  const replacement = await openSource(file, file.name)
+  if (replacement.personalProvenanceCleared) emit('sourceReplaced')
+  input.value = ''
 }
 
 function adjustPan(deltaX: number, deltaY: number) {
@@ -247,6 +291,15 @@ async function onUpload() {
 
 watch([zoom, panX, panY, backgroundMode, backgroundColor], renderPreviews)
 
+onMounted(async () => {
+  if (!props.initialSource) return
+  await openSource(
+    props.initialSource.blob,
+    props.initialSource.filename,
+    'personal',
+  )
+})
+
 onUnmounted(() => {
   loadGeneration += 1
   clearObjectUrl()
@@ -257,8 +310,9 @@ onUnmounted(() => {
   <section class="static-icon" aria-labelledby="static-icon-heading">
     <div class="static-icon__heading-row">
       <div>
-        <p class="static-icon__eyebrow font-maru-bold">New reusable icon</p>
-        <h3 id="static-icon-heading" class="static-icon__heading font-maru-bold">Make it clear at 16×16</h3>
+        <p class="static-icon__eyebrow font-maru-bold">{{ copyMode ? 'Personal Icon copy' : 'New reusable icon' }}</p>
+        <h3 id="static-icon-heading" class="static-icon__heading font-maru-bold">{{ copyMode ? 'Edit a copy' : 'Make it clear at 16×16' }}</h3>
+        <p v-if="copyMode" class="static-icon__reassurance">Your original icon will not change.</p>
       </div>
       <button type="button" class="icon-library__text-action" :disabled="locked" @click="emit('cancel')">
         Cancel
@@ -368,7 +422,7 @@ onUnmounted(() => {
           Reset
         </button>
         <button type="button" class="maru-button maru-button--sm bg-maru-blue text-maru-white" :disabled="locked" @click="onUpload">
-          <span class="maru-button__label">{{ encoding ? 'Preparing…' : busy ? 'Uploading…' : 'Upload to Yoto' }}</span>
+          <span class="maru-button__label">{{ encoding ? 'Preparing…' : busy ? 'Uploading…' : copyMode ? 'Upload copy' : 'Upload to Yoto' }}</span>
         </button>
       </div>
     </template>
