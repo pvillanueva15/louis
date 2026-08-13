@@ -3,6 +3,7 @@ import IconStaticEditor from './IconStaticEditor.vue'
 import CommunityIconSearch from './CommunityIconSearch.vue'
 import {
   shouldCloseIconLibraryAfterSelection,
+  type PersonalIconEditorSource,
   useIconLibrary,
 } from './useIconLibrary'
 import { resolveIconAssignmentModalLocks } from '#shared/myo-editor/draftTrackIconAssignment'
@@ -55,8 +56,14 @@ const {
   announcement,
   newestMediaId,
   recoveryRequired,
+  sourceStatus,
+  sourceError,
+  sourceErrorCode,
   load,
   upload,
+  uploadCopy,
+  loadPersonalIconSource,
+  cancelPersonalIconSource,
   acceptImportedIcon,
   openSession,
 } = useIconLibrary()
@@ -68,6 +75,9 @@ const retryButton = ref<HTMLButtonElement | null>(null)
 const editor = ref<{ focusInitial: () => void } | null>(null)
 const communitySearch = ref<{ reset: () => void } | null>(null)
 const editing = ref(false)
+const editorMode = ref<'create' | 'copy'>('create')
+const editorSource = ref<PersonalIconEditorSource | null>(null)
+const sourceRetryIcon = ref<PersonalIcon | null>(null)
 const activeTab = ref<'my' | 'community'>('my')
 const communityBusy = ref(false)
 const communityAcceptanceBusy = ref(false)
@@ -75,6 +85,7 @@ const headingId = 'icon-library-heading'
 let restoreFocusTo: HTMLElement | null = null
 
 const uploadBusy = computed(() => uploadStatus.value === 'uploading')
+const sourceLoading = computed(() => sourceStatus.value === 'loading')
 const modalBusy = computed(() =>
   props.busy || uploadBusy.value || communityBusy.value || communityAcceptanceBusy.value,
 )
@@ -97,15 +108,50 @@ const assignmentAnnouncement = computed(() => {
 
 async function showEditor() {
   if (uploadBlocked.value) return
+  cancelSourceLoad()
+  editorMode.value = 'create'
+  editorSource.value = null
   editing.value = true
   await nextTick()
   editor.value?.focusInitial()
 }
 
 async function showLibrary() {
+  cancelSourceLoad()
+  editorMode.value = 'create'
+  editorSource.value = null
   editing.value = false
   await nextTick()
   makeIconButton.value?.focus()
+}
+
+async function editAsCopy(icon: PersonalIcon) {
+  if (props.selectionMode || uploadBlocked.value || !icon.url) return
+  sourceRetryIcon.value = icon
+  const source = await loadPersonalIconSource(icon)
+  if (!source) return
+  sourceRetryIcon.value = null
+  editorMode.value = 'copy'
+  editorSource.value = source
+  editing.value = true
+  await nextTick()
+  editor.value?.focusInitial()
+}
+
+function clearPersonalSourceProvenance() {
+  cancelSourceLoad()
+  editorMode.value = 'create'
+  editorSource.value = null
+}
+
+function cancelSourceLoad() {
+  cancelPersonalIconSource()
+  sourceRetryIcon.value = null
+}
+
+async function retryPersonalIconSource() {
+  if (sourceErrorCode.value !== 'temporary' || !sourceRetryIcon.value) return
+  await editAsCopy(sourceRetryIcon.value)
 }
 
 async function retryLoad() {
@@ -116,8 +162,14 @@ async function retryLoad() {
   else retryButton.value?.focus()
 }
 
+async function refreshAfterSourceError() {
+  cancelSourceLoad()
+  await retryLoad()
+}
+
 function close() {
   if (dismissalBlocked.value) return
+  cancelSourceLoad()
   open.value = false
 }
 
@@ -174,8 +226,11 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 async function onUpload(blob: Blob, filename: string) {
-  const succeeded = await upload(blob, filename)
+  const submit = editorMode.value === 'copy' ? uploadCopy : upload
+  const succeeded = await submit(blob, filename)
   if (!succeeded && !recoveryRequired.value) return
+  cancelSourceLoad()
+  editorSource.value = null
   editing.value = false
   await nextTick()
   if (recoveryRequired.value) retryButton.value?.focus()
@@ -210,6 +265,9 @@ watch(open, async (isOpen) => {
   if (isOpen) {
     restoreFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
     editing.value = false
+    editorMode.value = 'create'
+    editorSource.value = null
+    cancelSourceLoad()
     activeTab.value = 'my'
     communityBusy.value = false
     communityAcceptanceBusy.value = false
@@ -220,11 +278,15 @@ watch(open, async (isOpen) => {
     return
   }
 
+  cancelSourceLoad()
+  editorSource.value = null
   editing.value = false
   await nextTick()
   restoreFocusTo?.focus()
   restoreFocusTo = null
 })
+
+onUnmounted(cancelSourceLoad)
 </script>
 
 <template>
@@ -238,7 +300,7 @@ watch(open, async (isOpen) => {
         role="dialog"
         aria-modal="true"
         :aria-labelledby="headingId"
-        :aria-busy="modalBusy"
+        :aria-busy="modalBusy || sourceLoading"
       >
         <header class="icon-library__header border-maru-bottom">
           <div>
@@ -274,7 +336,10 @@ watch(open, async (isOpen) => {
             v-if="editing"
             ref="editor"
             :busy="uploadBusy"
+            :initial-source="editorSource"
+            :copy-mode="editorMode === 'copy'"
             @cancel="showLibrary"
+            @source-replaced="clearPersonalSourceProvenance"
             @upload="onUpload"
           />
 
@@ -284,7 +349,7 @@ watch(open, async (isOpen) => {
                 type="button"
                 role="tab"
                 :aria-selected="activeTab === 'my'"
-                :disabled="modalBusy"
+                :disabled="modalBusy || sourceLoading"
                 :class="{ 'icon-library__tab--active': activeTab === 'my' }"
                 @click="activeTab = 'my'"
               >
@@ -294,7 +359,7 @@ watch(open, async (isOpen) => {
                 type="button"
                 role="tab"
                 :aria-selected="activeTab === 'community'"
-                :disabled="modalBusy"
+                :disabled="modalBusy || sourceLoading"
                 :class="{ 'icon-library__tab--active': activeTab === 'community' }"
                 @click="activeTab = 'community'"
               >
@@ -337,6 +402,36 @@ watch(open, async (isOpen) => {
               <span class="icon-library__loading-mark" aria-hidden="true" />
               <strong>Loading your icons…</strong>
               <span>Louis is checking your personal Yoto library.</span>
+            </div>
+
+            <div v-else-if="recoveryRequired" class="icon-library__state icon-library__state--error" role="alert">
+              <strong>Refresh My Icons before uploading again.</strong>
+              <span>{{ errorMessage }}</span>
+              <button ref="retryButton" type="button" class="icon-library__secondary-button" :disabled="modalBusy" @click="retryLoad">
+                Refresh My Icons
+              </button>
+            </div>
+
+            <div v-else-if="sourceStatus === 'loading'" class="icon-library__state" role="status">
+              <span class="icon-library__loading-mark" aria-hidden="true" />
+              <strong>Opening a copy in Icon Studio…</strong>
+              <button type="button" class="icon-library__secondary-button" @click="cancelSourceLoad">
+                Cancel
+              </button>
+            </div>
+
+            <div v-else-if="sourceStatus === 'error'" class="icon-library__state icon-library__state--error" role="alert">
+              <strong>We couldn’t open that icon.</strong>
+              <span>{{ sourceError }}</span>
+              <button v-if="sourceErrorCode === 'unavailable'" type="button" class="icon-library__secondary-button" :disabled="modalBusy" @click="refreshAfterSourceError">
+                Refresh My Icons
+              </button>
+              <a v-else-if="sourceErrorCode === 'authentication'" class="icon-library__secondary-button" href="/api/yoto/auth/login">
+                Reconnect to Yoto
+              </a>
+              <button v-else-if="sourceErrorCode === 'temporary'" type="button" class="icon-library__secondary-button" :disabled="modalBusy" @click="retryPersonalIconSource">
+                Try again
+              </button>
             </div>
 
             <div v-else-if="status === 'error'" class="icon-library__state icon-library__state--error">
@@ -382,6 +477,16 @@ watch(open, async (isOpen) => {
                   <img v-if="icon.url" :src="icon.url" :alt="`Personal icon ${index + 1}`" loading="lazy">
                   <span v-else class="icon-library__missing-preview" aria-label="Preview unavailable">?</span>
                 </div>
+                <button
+                  v-if="!selectionMode"
+                  type="button"
+                  class="icon-library__edit-copy"
+                  :disabled="uploadBlocked || !icon.url"
+                  :aria-label="icon.url ? `Edit personal icon ${index + 1} as a copy` : `Personal icon ${index + 1} source unavailable`"
+                  @click="editAsCopy(icon)"
+                >
+                  {{ icon.url ? 'Edit as Copy' : 'Source unavailable' }}
+                </button>
                 <span v-if="icon.mediaId === newestMediaId" class="icon-library__new-label">Just added</span>
               </li>
             </ul>
@@ -397,7 +502,7 @@ watch(open, async (isOpen) => {
             />
           </template>
 
-          <p v-if="errorMessage && (editing || activeTab === 'community' || status !== 'error')" class="icon-library__error" role="alert">{{ errorMessage }}</p>
+          <p v-if="errorMessage && !recoveryRequired && (editing || activeTab === 'community' || status !== 'error')" class="icon-library__error" role="alert">{{ errorMessage }}</p>
         </div>
 
         <footer v-if="rapidSelection" class="icon-library__assignment-nav border-maru-top">
