@@ -75,7 +75,7 @@ const tracks = [
               <div class="save-progress-bar">
                 <div
                   class="save-progress-bar__fill"
-                  style="width: 42%"
+                  style="--save-progress: 0.42"
                 />
               </div>
               <span
@@ -95,7 +95,7 @@ const tracks = [
             <div class="save-operation-bar">
               <div
                 class="save-operation-bar__fill"
-                style="width: 58%"
+                style="--save-operation: 0.58"
               />
             </div>
             <p class="howto-mock__save-meta font-maru-mono m-0">

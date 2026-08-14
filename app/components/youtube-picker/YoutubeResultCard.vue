@@ -88,14 +88,13 @@ function onEnableLongTracks(event: Event) {
   >
     <div class="yt-result-card__main flex items-start gap-3 p-2 pr-3">
       <div class="yt-result-card__thumb relative shrink-0 flex flex-col items-stretch gap-1.5">
-        <button
-          type="button"
+        <div
           class="relative block overflow-hidden rounded-[calc(var(--radius-maru)-2px)]"
           @click="emit('select', video.id)"
         >
           <img
             :src="video.thumbnailUrl"
-            :alt="video.title"
+            alt=""
             class="yt-result-card__thumb-img w-28 sm:w-36 aspect-video object-cover"
             loading="lazy"
           >
@@ -103,7 +102,7 @@ function onEnableLongTracks(event: Event) {
             v-if="durationLabel"
             class="yt-result-duration font-maru-mono tabular-nums"
           >{{ durationLabel }}</span>
-        </button>
+        </div>
         <button
           v-if="!restricted"
           ref="handle"
@@ -123,6 +122,7 @@ function onEnableLongTracks(event: Event) {
         <button
           type="button"
           class="min-w-0 w-full text-left"
+          :aria-label="`Select “${video.title}” by ${video.channelTitle}`"
           @click="emit('select', video.id)"
         >
           <p class="yt-result-card__title font-maru-medium text-3xl sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
@@ -133,7 +133,10 @@ function onEnableLongTracks(event: Event) {
           v-if="!restricted"
           class="w-full min-w-0"
         >
-          <YoutubePickerAudioControls :video-id="video.id" />
+          <YoutubePickerAudioControls
+            :video-id="video.id"
+            :title="video.title"
+          />
         </div>
       </div>
     </div>
@@ -179,14 +182,13 @@ function onEnableLongTracks(event: Event) {
   >
     <div class="yt-result-card__main">
       <div class="relative">
-        <button
-          type="button"
+        <div
           class="relative w-full overflow-hidden text-left"
           @click="emit('select', video.id)"
         >
           <img
             :src="video.thumbnailUrl"
-            :alt="video.title"
+            alt=""
             class="w-full aspect-video object-cover"
             loading="lazy"
           >
@@ -194,7 +196,7 @@ function onEnableLongTracks(event: Event) {
             v-if="durationLabel"
             class="yt-result-duration font-maru-mono tabular-nums"
           >{{ durationLabel }}</span>
-        </button>
+        </div>
         <button
           v-if="!restricted"
           ref="handle"
@@ -213,6 +215,7 @@ function onEnableLongTracks(event: Event) {
         <button
           type="button"
           class="w-full text-left"
+          :aria-label="`Select “${video.title}” by ${video.channelTitle}`"
           @click="emit('select', video.id)"
         >
           <p class="yt-result-card__title font-maru-medium text-3xl sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
@@ -222,7 +225,10 @@ function onEnableLongTracks(event: Event) {
           v-if="!restricted"
           class="pt-2"
         >
-          <YoutubePickerAudioControls :video-id="video.id" />
+          <YoutubePickerAudioControls
+            :video-id="video.id"
+            :title="video.title"
+          />
         </div>
       </div>
     </div>

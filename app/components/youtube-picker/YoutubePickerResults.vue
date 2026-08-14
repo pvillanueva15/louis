@@ -31,14 +31,12 @@ const emit = defineEmits<{
       :class="layout === 'list'
         ? ['flex flex-col gap-2 list-none m-0 p-0', bare ? 'mt-2 sm:mt-3' : '']
         : ['grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 list-none m-0 p-0', bare ? 'mt-2 sm:mt-3' : '']"
-      role="listbox"
+      role="list"
       aria-label="Search results"
     >
       <li
         v-for="(video, index) in results"
         :key="video.id"
-        role="option"
-        :aria-selected="index === focusedIndex"
       >
         <YoutubeResultCard
           :video="video"

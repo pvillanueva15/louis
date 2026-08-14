@@ -130,6 +130,7 @@ function stopSuggestions() {
 }
 
 function startSuggestions() {
+  if (overlayPaused.value) return
   suggestionsStopped.value = false
   animatedPlaceholder.value = ''
   measuredTextWidth.value = 0
@@ -142,6 +143,24 @@ function startSuggestions() {
   })
   typewriter.start()
 }
+
+/** A full-screen overlay (auth TV, splash, welcome) has the app inert — no typing behind the dimmer. */
+const overlayPaused = ref(false)
+let inertObserver: MutationObserver | null = null
+
+function syncOverlayPause() {
+  overlayPaused.value = Boolean(containerRef.value?.closest('[inert]'))
+}
+
+watch(overlayPaused, (paused) => {
+  if (paused) {
+    typewriter?.stop()
+    typewriter = null
+  }
+  else if (!suggestionsStopped.value && !query.value.trim()) {
+    startSuggestions()
+  }
+})
 
 function onFocus() {
   inputFocused.value = true
@@ -176,7 +195,7 @@ watch(query, (value) => {
 })
 
 watch(() => props.placeholders, () => {
-  if (suggestionsStopped.value || query.value.trim()) return
+  if (suggestionsStopped.value || query.value.trim() || overlayPaused.value) return
   typewriter?.stop()
   typewriter = null
   startSuggestions()
@@ -194,18 +213,20 @@ onMounted(() => {
     syncMeasuredTextWidth()
   }
 
-  typewriter = createTypewriterCycle({
-    phrases: props.placeholders,
-    onUpdate: (text) => {
-      animatedPlaceholder.value = text
-    },
+  inertObserver = new MutationObserver(syncOverlayPause)
+  inertObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['inert'],
+    subtree: true,
   })
-  typewriter.start()
+  syncOverlayPause()
+  startSuggestions()
 })
 
 onUnmounted(() => {
   stopSuggestions()
   resizeObserver?.disconnect()
+  inertObserver?.disconnect()
 })
 </script>
 

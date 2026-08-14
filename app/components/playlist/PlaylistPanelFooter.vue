@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
+import { YOTO_MYO_KEY } from '~/components/yoto-myo/keys'
 import { useSaveProgressTestMode } from '~/components/playlist/saveProgressTestFixture'
 import PlaylistCapacityMeters from '~/components/playlist/PlaylistCapacityMeters.vue'
 import {
@@ -14,6 +15,7 @@ import { getCardTitleValidationError } from '#shared/yoto/cardMutation'
 import { RAW_STRUCTURAL_MIX_MESSAGE } from '#shared/myo-editor/rawTrackManagement'
 
 const editor = inject(MYO_EDITOR_KEY, null)
+const yoto = inject(YOTO_MYO_KEY, null)
 const { playEvent } = useUiSound()
 
 const saveProgressTestMode = useSaveProgressTestMode()
@@ -105,6 +107,16 @@ const actionLabel = computed(() => {
   return isNewPlaylist?.value ? 'Create' : 'Update'
 })
 
+/** Uncertain create outcome: the primary action becomes a live "look at the truth" jump. */
+const checkMyCardsActive = computed(() => Boolean(
+  isNewPlaylist?.value
+  && createOutcomeUncertain?.value
+  && !isPlaylistLocked?.value
+  && !saveProgressTestMode.value,
+))
+
+const primaryActionable = computed(() => canSave.value || checkMyCardsActive.value)
+
 const canReset = computed(
   () => Boolean(isDirty?.value && !loading?.value && !isPlaylistLocked?.value && !saveProgressTestMode.value),
 )
@@ -130,7 +142,27 @@ function savePlaylist(options?: { acknowledgeCapacityRisk?: boolean }) {
   void editor?.updateCard(options)
 }
 
+function directAttentionToMyCards() {
+  const bay = document.querySelector<HTMLElement>('[data-my-cards-focus-anchor]')
+  if (!bay) return
+  bay.focus()
+  bay.classList.remove('my-cards-attention')
+  void bay.offsetWidth
+  bay.classList.add('my-cards-attention')
+}
+
+function onCheckMyCards() {
+  playEvent('buttonPrimary')
+  void yoto?.refreshAfterContentMutation()
+  directAttentionToMyCards()
+}
+
 function onSave() {
+  if (checkMyCardsActive.value) {
+    onCheckMyCards()
+    return
+  }
+
   if (!canSave.value) {
     playEvent('disabled')
     return
@@ -265,8 +297,8 @@ watch(
           <button
             type="button"
             class="panel-footer-btn panel-footer-btn--short panel-footer-btn--primary shrink-0"
-            :aria-disabled="!canSave"
-            :tabindex="canSave ? 0 : -1"
+            :aria-disabled="!primaryActionable"
+            :tabindex="primaryActionable ? 0 : -1"
             @click="onSave"
           >
             <span class="panel-footer-btn__label">{{ actionLabel }}</span>

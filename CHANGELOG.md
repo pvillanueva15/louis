@@ -27,6 +27,14 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 
 ### Changed
 - Loading ceremonies (YouTube search, card opening, the Yoto connect gate) play their full intro only the first time per tab session; repeats keep the animation but hold only briefly.
+- "Check My Cards" after an uncertain playlist create is now a live button: it refreshes the card list and pulses the My Cards bay instead of doing nothing.
+- YouTube search failures now show a proper error state with the reason and a Try again button instead of a bare red line.
+- Search result thumbnail and title are one labeled select control, and preview play/seek controls announce which track they belong to.
+- Search results use conforming list semantics for assistive tech (previously a listbox with interactive controls nested in options).
+- The disabled Import playlist button now explains why it is disabled on keyboard focus, not only on mouse hover.
+- Save and operation progress bars animate with transforms instead of layout for smoother progress rendering.
+- The typewriter search placeholder pauses while a full-screen overlay (splash, auth TV, welcome) covers the app.
+- Search suggestion chips start their color cycle at a varied point per placeholder set; adjacent chips never share a hue.
 - Personal icon uploads now block blind retry after uncertain or accepted-but-unrefreshed outcomes until My Icons is explicitly refreshed.
 - Expected anon→cookies escalate and retries log at info level (not warn/error).
 - Long API errors use h3 `message` instead of `statusMessage` (avoids future sanitization warnings).

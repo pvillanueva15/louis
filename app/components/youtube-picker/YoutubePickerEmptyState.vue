@@ -8,7 +8,7 @@ const PLACEHOLDER_COLORS = [
   { bg: 'bg-maru-turquoise-light', text: 'text-maru-black' },
 ] as const
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   variant?: 'initial' | 'no-results'
   query?: string
   placeholders?: string[]
@@ -37,10 +37,6 @@ function onChipClick(placeholder: string) {
   emit('search', placeholder)
 }
 
-function colorForIndex(index: number) {
-  return PLACEHOLDER_COLORS[index % PLACEHOLDER_COLORS.length]!
-}
-
 function hashLabel(label: string): number {
   let hash = 0
   for (let i = 0; i < label.length; i++) {
@@ -48,6 +44,16 @@ function hashLabel(label: string): number {
     hash |= 0
   }
   return Math.abs(hash)
+}
+
+/** Walk the palette cyclically from a set-dependent start: adjacent chips never share a hue. */
+const chipColorOffset = computed(() => {
+  const first = props.placeholders[0]
+  return first ? hashLabel(first) % PLACEHOLDER_COLORS.length : 0
+})
+
+function colorForIndex(index: number) {
+  return PLACEHOLDER_COLORS[(index + chipColorOffset.value) % PLACEHOLDER_COLORS.length]!
 }
 
 function chipStyle(label: string) {
