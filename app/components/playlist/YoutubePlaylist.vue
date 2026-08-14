@@ -9,6 +9,7 @@ import PlaylistItem from './PlaylistItem.vue'
 import PlaylistSaveProgress from './PlaylistSaveProgress.vue'
 import IconLibraryModal from '~/components/icon-library/IconLibraryModal.vue'
 import { useIconLibrary } from '~/components/icon-library/useIconLibrary'
+import { ceremonyHoldMs } from '~/utils/ceremonyWarmth'
 import type { PersonalIcon } from '#shared/yoto/iconContract'
 import {
   advanceRapidTrackIconAssignment,
@@ -391,6 +392,7 @@ const isCardLoading = computed(() => loading.value && !isPlaylistLocked.value)
 
 const CARD_LOADING_MIN_MS = 3000
 const GARAGE_DOOR_MS = 520
+const CARD_LOADING_WARM_MS = GARAGE_DOOR_MS + 120
 
 type GarageDoorMode = 'card' | 'disconnect' | 'idle-disconnected' | null
 
@@ -398,6 +400,7 @@ const showCardLoadingGarage = ref(false)
 const garageDoorShut = ref(false)
 const garageDoorMode = ref<GarageDoorMode>(null)
 let cardLoadingStartedAt = 0
+let cardLoadingMinMs = CARD_LOADING_MIN_MS
 let cardLoadingDismissTimer: ReturnType<typeof setTimeout> | null = null
 let cardLoadingExitTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -478,7 +481,7 @@ function scheduleGarageDoorExit() {
   clearCardLoadingTimers()
 
   const elapsed = Date.now() - cardLoadingStartedAt
-  const remaining = Math.max(0, CARD_LOADING_MIN_MS - elapsed)
+  const remaining = Math.max(0, cardLoadingMinMs - elapsed)
 
   cardLoadingDismissTimer = setTimeout(() => {
     openGarageDoor()
@@ -546,6 +549,7 @@ watch(isCardLoading, (loadingNow) => {
   if (loadingNow) {
     clearCardLoadingTimers()
     cardLoadingStartedAt = Date.now()
+    cardLoadingMinMs = ceremonyHoldMs('card-loading', CARD_LOADING_MIN_MS, CARD_LOADING_WARM_MS)
 
     if (!showCardLoadingGarage.value) {
       showGarageDoor('card')

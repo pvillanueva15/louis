@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import MaruHeading from '~/components/layout/MaruHeading.vue'
+import { ceremonyHoldMs } from '~/utils/ceremonyWarmth'
 import { YOTO_MYO_KEY } from './keys'
 
 const GATE_DELAY_MS = 2000
@@ -157,7 +158,7 @@ function startGateSequence() {
   delayTimer = setTimeout(() => {
     delayTimer = null
     beginBoot()
-  }, GATE_DELAY_MS)
+  }, ceremonyHoldMs('auth-gate', GATE_DELAY_MS))
 }
 
 function onPrimaryAction() {
