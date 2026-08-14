@@ -902,6 +902,12 @@ body {
   pointer-events: none;
 }
 
+/* Listening is free even when adding is gated: the preview controls sit above the quarantine scrim. */
+.yt-result-card--over-limit .yt-audio-controls {
+  position: relative;
+  z-index: 4;
+}
+
 .yt-result-card--over-limit .yt-result-card__thumb-img {
   width: 4.75rem;
 }
@@ -1182,6 +1188,17 @@ body {
     width: 2.75rem;
     height: 2.75rem;
   }
+
+  /* An inactive preview scrubber is a meaningless floating dot at phone widths. */
+  .yt-audio-range:disabled {
+    display: none;
+  }
+
+  /* The idle disconnected playlist bay collapses to a slim door strip so
+     Connect / New Playlist in My Cards stay within a screen's reach. */
+  .app-panel--playlist:has(.playlist-garage-door--instant.playlist-garage-door--shut) {
+    height: 11rem;
+  }
 }
 
 /* ─── YouTube audio controls (chunky Maru) ─── */
@@ -1352,6 +1369,18 @@ body {
   color: var(--color-maru-black);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.yt-audio-slow-note {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-maru);
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--color-maru-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .yt-audio-range:active::-webkit-slider-thumb {

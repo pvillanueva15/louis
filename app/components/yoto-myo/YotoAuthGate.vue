@@ -138,6 +138,12 @@ function onScreenAnimationEnd(event: AnimationEvent) {
   showGateWithDim()
 }
 
+function skipBoot() {
+  if (phase.value !== 'animating') return
+  clearTimers()
+  showGateWithDim()
+}
+
 function beginBoot() {
   if (!blockedReason.value) return
 
@@ -252,6 +258,7 @@ onUnmounted(() => {
       v-if="showScreen"
       class="yoto-auth-gate"
       :class="gateClass"
+      @click="skipBoot"
     >
       <div
         class="yoto-auth-gate__backdrop"

@@ -58,7 +58,7 @@ defineProps<{
           header-bg="bg-maru-orange"
           body-bg="bg-maru-green-lighter"
           header-text-class="text-maru-black"
-          class="flex-[3] min-h-0 max-sm:flex-none max-sm:h-[65svh] max-sm:shrink-0 max-sm:order-2"
+          class="app-panel--playlist flex-[3] min-h-0 max-sm:flex-none max-sm:h-[65svh] max-sm:shrink-0 max-sm:order-2"
           fill-body
         >
           <template

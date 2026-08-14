@@ -371,20 +371,23 @@ const isYotoUnavailable = computed(() => {
 
 const isYotoLoading = computed(() => yoto?.status.value === 'loading')
 
+/** Disconnected browse mode still allows arranging a draft; the idle door only covers a bay with no edit in progress. */
+const isDisconnectedIdle = computed(() => isYotoUnavailable.value && !isEditing.value)
+
 const isYotoDisconnectGarage = ref(false)
 
 const isYotoPlaylistBlocked = computed(
-  () => isYotoUnavailable.value || isYotoLoading.value || isYotoDisconnectGarage.value,
+  () => isDisconnectedIdle.value || isYotoLoading.value || isYotoDisconnectGarage.value,
 )
 
 const showPlaylistItems = computed(() => {
   if (isYotoDisconnectGarage.value) return true
-  return !isYotoUnavailable.value && !isYotoLoading.value
+  return !isDisconnectedIdle.value && !isYotoLoading.value
 })
 
 const showEmptyState = computed(() => {
   if (isYotoDisconnectGarage.value) return false
-  if (isYotoUnavailable.value || isYotoLoading.value) return false
+  if (isDisconnectedIdle.value || isYotoLoading.value) return false
   return playlist.value.length === 0
 })
 
@@ -493,6 +496,21 @@ function scheduleGarageDoorExit() {
   }, remaining)
 }
 
+function skipGarageDoorHold() {
+  if (garageDoorMode.value !== 'card') return
+  if (isCardLoading.value) return
+  if (!garageDoorShut.value) return
+  if (!cardLoadingDismissTimer) return
+  clearTimeout(cardLoadingDismissTimer)
+  cardLoadingDismissTimer = null
+  openGarageDoor()
+  cardLoadingExitTimer = setTimeout(() => {
+    showCardLoadingGarage.value = false
+    garageDoorMode.value = null
+    cardLoadingExitTimer = null
+  }, GARAGE_DOOR_MS)
+}
+
 function onGarageDoorTransitionEnd(event: TransitionEvent) {
   if (event.propertyName !== 'transform') return
 
@@ -523,6 +541,8 @@ watch(isYotoUnavailable, (unavailable, wasUnavailable) => {
 
   if (!unavailable || wasUnavailable) return
 
+  if (isEditing.value) return
+
   const hadContent = playlist.value.length > 0 || Boolean(selectedCardId.value)
   if (!hadContent) {
     clearSelection(true)
@@ -533,9 +553,16 @@ watch(isYotoUnavailable, (unavailable, wasUnavailable) => {
 })
 
 watch(
-  () => isYotoUnavailable.value && !isYotoLoading.value,
+  () => isDisconnectedIdle.value && !isYotoLoading.value,
   (showIdle) => {
-    if (!showIdle) return
+    if (!showIdle) {
+      if (garageDoorMode.value === 'idle-disconnected') {
+        showCardLoadingGarage.value = false
+        garageDoorMode.value = null
+        garageDoorShut.value = false
+      }
+      return
+    }
     if (isYotoDisconnectGarage.value) return
     if (garageDoorMode.value === 'disconnect') return
     if (garageDoorMode.value === 'idle-disconnected') return
@@ -702,6 +729,7 @@ watch(() => props.scrollToVideoId, async (id) => {
       aria-live="polite"
       :aria-busy="garageDoorMode === 'card' || garageDoorMode === 'disconnect'"
       @transitionend="onGarageDoorTransitionEnd"
+      @click="skipGarageDoorHold"
     >
       <PlaylistCardLoading
         :key="garageDoorMode === 'card' ? (selectedCardId ?? 'loading') : 'disconnected'"

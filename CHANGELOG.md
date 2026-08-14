@@ -38,6 +38,10 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 - Save and operation progress bars animate with transforms instead of layout for smoother progress rendering.
 - The typewriter search placeholder pauses while a full-screen overlay (splash, auth TV, welcome) covers the app.
 - Search suggestion chips start their color cycle at a varied point per placeholder set; adjacent chips never share a hue.
+- A loading preview can be cancelled by tapping the play button again, and slow fetches explain themselves after a few seconds.
+- Over-limit tracks can now be previewed; only adding them to a playlist stays behind the long-tracks confirm.
+- On phones, the idle disconnected playlist bay collapses to a slim strip, inactive preview scrubbers hide, and result titles show up to three lines.
+- The TV boot and the card-loading garage hold can be skipped with a click once their work is done.
 - Personal icon uploads now block blind retry after uncertain or accepted-but-unrefreshed outcomes until My Icons is explicitly refreshed.
 - Expected anon→cookies escalate and retries log at info level (not warn/error).
 - Long API errors use h3 `message` instead of `statusMessage` (avoids future sanitization warnings).
@@ -45,6 +49,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 
 ### Fixed
 - Backspace in the YouTube search field no longer plays the blocked-action thunk on every keypress; deleting characters now ticks like typing.
+- Arranging a playlist while disconnected now shows the draft as you build it (tracks were being added behind the shut garage door), and drag-to-playlist works in browse mode.
 
 ## [1.0.0] - 2026-07-22
 

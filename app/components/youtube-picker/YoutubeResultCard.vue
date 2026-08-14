@@ -152,14 +152,11 @@ function onEnableLongTracks(event: Event) {
           :aria-label="`Select “${video.title}” by ${video.channelTitle}`"
           @click="emit('select', video.id)"
         >
-          <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
+          <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 max-sm:line-clamp-3 text-pretty">{{ video.title }}</p>
           <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.4rem] sm:text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
         </button>
 
-        <div
-          v-if="!restricted"
-          class="w-full min-w-0"
-        >
+        <div class="w-full min-w-0">
           <YoutubePickerAudioControls
             :video-id="video.id"
             :title="video.title"
@@ -291,10 +288,7 @@ function onEnableLongTracks(event: Event) {
           <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
           <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.4rem] sm:text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
         </button>
-        <div
-          v-if="!restricted"
-          class="pt-2"
-        >
+        <div class="pt-2">
           <YoutubePickerAudioControls
             :video-id="video.id"
             :title="video.title"
