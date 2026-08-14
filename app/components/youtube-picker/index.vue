@@ -7,6 +7,7 @@
 -->
 <script setup lang="ts">
 import { useYoutubePicker } from './useYoutubePicker'
+import { useAddToPlaylist } from './useAddToPlaylist'
 import YoutubePickerPreview from './YoutubePickerPreview.vue'
 import YoutubePlaylistImport from './YoutubePlaylistImport.vue'
 import YoutubePickerResultsPane from './YoutubePickerResultsPane.vue'
@@ -43,8 +44,11 @@ const searchPlaceholders = computed(
 )
 
 const containerRef = ref<HTMLElement | null>(null)
+const searchRef = ref<InstanceType<typeof YoutubePickerSearch> | null>(null)
 const audioPlayer = useYoutubeAudioPlayer()
 provide(YOUTUBE_AUDIO_PLAYER_KEY, audioPlayer)
+
+const { available: playlistAvailable, addToPlaylist } = useAddToPlaylist()
 
 const {
   query,
@@ -116,9 +120,14 @@ function onKeydown(event: KeyboardEvent) {
       moveFocus(-1)
       break
     case 'Enter':
+      if (event.target instanceof HTMLElement && event.target.closest('button, a')) break
       if (focusedIndex.value >= 0) {
         event.preventDefault()
-        onSelect(results.value[focusedIndex.value]!.id)
+        const video = results.value[focusedIndex.value]!
+        onSelect(video.id)
+        if (playlistAvailable.value) {
+          addToPlaylist(video)
+        }
       }
       break
     case 'Escape':
@@ -130,12 +139,36 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true
+  return target.isContentEditable
+}
+
+function onGlobalKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    if (searchRef.value?.focusInput()) playEvent('select')
+    return
+  }
+  if (
+    event.key === '/'
+    && !event.metaKey && !event.ctrlKey && !event.altKey
+    && !isEditableTarget(event.target)
+  ) {
+    event.preventDefault()
+    if (searchRef.value?.focusInput()) playEvent('select')
+  }
+}
+
 onMounted(() => {
   containerRef.value?.addEventListener('keydown', onKeydown)
+  window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
   containerRef.value?.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('keydown', onGlobalKeydown)
   audioPlayer.destroy()
 })
 </script>
@@ -148,6 +181,7 @@ onUnmounted(() => {
   >
     <div :class="embedded ? 'shrink-0' : ''">
       <YoutubePickerSearch
+        ref="searchRef"
         v-model="query"
         :placeholders="searchPlaceholders"
         :embedded="embedded"

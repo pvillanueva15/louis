@@ -100,8 +100,8 @@ function isTypingKey(event: KeyboardEvent): boolean {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Backspace') {
-    playEvent('disabled')
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    if (query.value.length > 0) playEvent('type')
   }
   else if (isTypingKey(event)) {
     playEvent('type')
@@ -156,6 +156,18 @@ function onInput() {
   stopSuggestions()
   syncMeasuredTextWidth()
 }
+
+/** Focus the search input (used by keyboard shortcuts); true when focus actually moved here. */
+function focusInput(): boolean {
+  const input = inputRef.value
+  if (!input || document.activeElement === input) return false
+  input.focus()
+  if (document.activeElement !== input) return false
+  input.select()
+  return true
+}
+
+defineExpose({ focusInput })
 
 function clearSearch() {
   playEvent('toggleOff')

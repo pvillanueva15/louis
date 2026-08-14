@@ -1044,6 +1044,108 @@ body {
   pointer-events: none;
 }
 
+/* ─── Result add-to-playlist button ─── */
+
+.yt-result-add {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 3px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-blue);
+  color: var(--color-maru-white);
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--color-maru-black);
+  transition:
+    scale 0.2s cubic-bezier(0.34, 1.45, 0.64, 1),
+    translate 0.2s cubic-bezier(0.34, 1.45, 0.64, 1),
+    box-shadow 0.2s ease-out,
+    background-color 0.15s ease-out;
+}
+
+.yt-result-add:hover:not([aria-disabled="true"]) {
+  translate: -1px -1px;
+  box-shadow: 3px 3px 0 var(--color-maru-black);
+}
+
+.yt-result-add:active:not([aria-disabled="true"]) {
+  scale: 0.96;
+  translate: 1px 1px;
+  box-shadow: 1px 1px 0 var(--color-maru-black);
+  transition-duration: 100ms;
+}
+
+.yt-result-add:focus-visible {
+  outline: 3px solid var(--color-maru-blue);
+  outline-offset: 2px;
+}
+
+.yt-result-add--added {
+  background: var(--color-maru-green-lighter);
+  color: var(--color-maru-black);
+  cursor: default;
+}
+
+.yt-result-add--blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yt-result-add__plus {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.yt-result-add__plus::before,
+.yt-result-add__plus::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.yt-result-add__plus::before {
+  width: 14px;
+  height: 3px;
+}
+
+.yt-result-add__plus::after {
+  width: 3px;
+  height: 14px;
+}
+
+.yt-result-add__check {
+  display: block;
+  width: 0.55rem;
+  height: 0.95rem;
+  margin-top: -0.15rem;
+  border-right: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  rotate: 40deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yt-result-add {
+    transition: background-color 0.15s ease-out;
+  }
+
+  .yt-result-add:hover:not([aria-disabled="true"]),
+  .yt-result-add:active:not([aria-disabled="true"]) {
+    scale: none;
+    translate: none;
+  }
+}
+
 /* ─── YouTube audio controls (chunky Maru) ─── */
 
 .yt-audio-controls {
