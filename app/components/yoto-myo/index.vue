@@ -47,6 +47,8 @@ const {
   onPointerCancel,
 } = useMyoCardFanScroll()
 
+const { playEvent } = useUiSound()
+
 function onSelectCard(card: YotoMyoCardType) {
   if (shouldSuppressCardClick()) return
   editor?.selectCard(card)
@@ -54,6 +56,12 @@ function onSelectCard(card: YotoMyoCardType) {
 
 function onNewPlaylist() {
   editor?.startNewPlaylist()
+}
+
+/** Re-summon the auth-gate TV instead of redirecting straight to Yoto. */
+function onSummonConnect() {
+  playEvent('buttonPrimary')
+  yoto.summonGate()
 }
 
 const newPlaylistDisabled = computed(
@@ -204,11 +212,29 @@ watch(cardCountLabel, value => emit('update:count', value), { immediate: true })
         {{ errorMessage }}
       </p>
 
-      <div v-else-if="status === 'disconnected'" class="empty-state flex-1 min-h-0 w-full gap-3">
+      <div v-else-if="status === 'disconnected'" class="empty-state flex-1 min-h-0 w-full gap-3 px-3">
         <MaruEmoji name="Bear" size="lg" />
         <p class="empty-state-meta">
-          Connect your Yoto account to load your MYO cards.
+          Not connected to Yoto. Search and arrange a playlist — connect when you're ready to save.
         </p>
+        <div class="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            class="maru-button maru-button--sm bg-maru-blue text-maru-white"
+            @click="onSummonConnect"
+          >
+            <span class="maru-button__label">Connect Yoto</span>
+          </button>
+          <button
+            v-if="editor"
+            type="button"
+            class="maru-button maru-button--sm bg-maru-white text-maru-black"
+            :disabled="newPlaylistDisabled"
+            @click="onNewPlaylist"
+          >
+            <span class="maru-button__label">New Playlist</span>
+          </button>
+        </div>
       </div>
 
       <template v-else>

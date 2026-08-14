@@ -285,6 +285,7 @@ onUnmounted(() => {
                 v-model="query"
                 type="text"
                 role="searchbox"
+                data-search-focus-anchor
                 class="typetester-inline-input"
                 :aria-label="label"
                 :placeholder="animatedPlaceholder"

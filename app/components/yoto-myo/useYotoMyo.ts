@@ -6,6 +6,43 @@ interface RefreshOptions {
   auxiliary?: boolean
 }
 
+/**
+ * Why the user last summoned the auth gate. 'save' means they tried to save
+ * a playlist while unauthenticated, so the TV can say why it came back.
+ */
+export type AuthGateIntent = 'save' | null
+
+/**
+ * Session-scoped memory of "Just looking" — a reload should not slam the TV
+ * back over a browsing user, but a fresh session still boots to the TV.
+ */
+const GATE_DISMISSED_KEY = 'yoto-cards:auth-gate-dismissed'
+
+function readGateDismissed(): boolean {
+  if (typeof sessionStorage === 'undefined') return false
+  try {
+    return sessionStorage.getItem(GATE_DISMISSED_KEY) === '1'
+  }
+  catch {
+    return false
+  }
+}
+
+function writeGateDismissed(dismissed: boolean): void {
+  if (typeof sessionStorage === 'undefined') return
+  try {
+    if (dismissed) {
+      sessionStorage.setItem(GATE_DISMISSED_KEY, '1')
+    }
+    else {
+      sessionStorage.removeItem(GATE_DISMISSED_KEY)
+    }
+  }
+  catch {
+    // Best effort — the gate simply reappears on reload.
+  }
+}
+
 function extractErrorMessage(err: unknown): string {
   const fetchErr = err as {
     statusCode?: number
@@ -27,6 +64,22 @@ export function useYotoMyo() {
   const configured = ref(false)
   const connected = ref(false)
   const hasWriteScope = ref(false)
+  const gateDismissed = ref(false)
+  const gateIntent = ref<AuthGateIntent>(null)
+
+  /** "Just looking" — hide the auth gate for the rest of this tab session. */
+  function dismissGate() {
+    gateDismissed.value = true
+    gateIntent.value = null
+    writeGateDismissed(true)
+  }
+
+  /** Bring the auth gate back (Connect Yoto affordance, save intent). */
+  function summonGate(intent: AuthGateIntent = null) {
+    gateIntent.value = intent
+    gateDismissed.value = false
+    writeGateDismissed(false)
+  }
 
   async function fetchCards(options: RefreshOptions = {}) {
     const previousCards = cards.value
@@ -146,6 +199,7 @@ export function useYotoMyo() {
   }
 
   onMounted(() => {
+    gateDismissed.value = readGateDismissed()
     checkStatus()
   })
 
@@ -156,6 +210,10 @@ export function useYotoMyo() {
     configured,
     connected,
     hasWriteScope,
+    gateDismissed,
+    gateIntent,
+    dismissGate,
+    summonGate,
     connect,
     disconnect,
     refresh,

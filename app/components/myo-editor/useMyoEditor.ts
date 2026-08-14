@@ -80,6 +80,11 @@ import {
   readPersistedSaves,
   removePersistedSave,
 } from './saveJobPersistence'
+import {
+  takeAuthRedirectStash,
+  writeAuthRedirectStash,
+  type AuthRedirectEditorStash,
+} from './authRedirectStash'
 import type { SaveJobState, YotoCardDetail } from './types'
 import {
   getPlaylistPreflightLimitError,
@@ -145,6 +150,7 @@ export interface MyoEditorContext {
   prepareStructuralEdit: () => boolean
   getEffectiveTrackIcon: (track: PlaylistTrack) => EffectiveTrackIcon
   isCardSaving: (cardId: string) => boolean
+  prepareForAuthRedirect: () => void
   startNewPlaylist: () => boolean
   saveAsCard: () => boolean
   selectCard: (card: YotoMyoCard) => Promise<void>
@@ -1448,7 +1454,65 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     }
   }
 
+  /**
+   * Stash the in-progress editor before the Yoto OAuth full-page redirect so
+   * the playlist survives the round trip, and let the navigation proceed
+   * without the unsaved-changes prompt (the stash makes it safe).
+   */
+  let authRedirectStashed = false
+
+  function prepareForAuthRedirect() {
+    if (isEditing.value) {
+      writeAuthRedirectStash(cloneStructuredSnapshot({
+        savedAt: Date.now(),
+        selectedCardId: selectedCardId.value,
+        isNewPlaylist: isNewPlaylist.value,
+        isSaveAsDraft: isSaveAsDraft.value,
+        cardTitle: cardTitle.value,
+        baselineCardTitle: baselineCardTitle.value,
+        cardRevision: cardRevision.value,
+        isPodcast: isPodcast.value,
+        playlist: playlist.value,
+        baselinePlaylist: baselinePlaylist.value,
+        trackIconAssignments: trackIconAssignments.value,
+        trackTitleAssignments: trackTitleAssignments.value,
+        trackRemovalAssignments: trackRemovalAssignments.value,
+        originalCardDetail: originalCardDetail.value,
+        saveAsSourceSnapshot: saveAsSourceSnapshot.value,
+        saveAsSourceReference: saveAsSourceReference.value,
+        saveAsMutations: saveAsMutations.value,
+      }, toRaw))
+    }
+    authRedirectStashed = true
+    // If the redirect somehow never happens, restore the unload protection.
+    setTimeout(() => {
+      authRedirectStashed = false
+    }, 5000)
+  }
+
+  function restoreFromAuthRedirect(stash: AuthRedirectEditorStash) {
+    selectedCardId.value = stash.selectedCardId
+    isNewPlaylist.value = stash.isNewPlaylist
+    isSaveAsDraft.value = stash.isSaveAsDraft
+    cardTitle.value = stash.cardTitle
+    baselineCardTitle.value = stash.baselineCardTitle
+    cardRevision.value = stash.cardRevision
+    isPodcast.value = stash.isPodcast
+    playlist.value = stash.playlist
+    baselinePlaylist.value = stash.baselinePlaylist
+    trackIconAssignments.value = stash.trackIconAssignments
+    trackTitleAssignments.value = stash.trackTitleAssignments
+    trackRemovalAssignments.value = stash.trackRemovalAssignments
+    originalCardDetail.value = stash.originalCardDetail
+    saveAsSourceSnapshot.value = stash.saveAsSourceSnapshot
+    saveAsSourceReference.value = stash.saveAsSourceReference
+    saveAsMutations.value = stash.saveAsMutations
+    rawTrackUndo.value = null
+    errorMessage.value = ''
+  }
+
   function onBeforeUnload(event: BeforeUnloadEvent) {
+    if (authRedirectStashed) return
     event.preventDefault()
     event.returnValue = true
   }
@@ -1457,6 +1521,11 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
   let beforeUnloadAttached = false
 
   onMounted(() => {
+    const stash = takeAuthRedirectStash()
+    if (stash) {
+      restoreFromAuthRedirect(stash)
+    }
+
     stopBeforeUnloadWatch = watch(
       [isDirty, backgroundSaveActive, cardMutationActive, deletionActive],
       ([dirty, saveActive, mutationActive, deleteActive]) => {
@@ -1524,6 +1593,7 @@ export function useMyoEditor(options: UseMyoEditorOptions = {}) {
     prepareStructuralEdit,
     getEffectiveTrackIcon,
     isCardSaving,
+    prepareForAuthRedirect,
     startNewPlaylist,
     saveAsCard,
     selectCard,
