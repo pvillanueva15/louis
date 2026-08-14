@@ -6,6 +6,7 @@ import {
 
 const props = defineProps<{
   videoId: string
+  title?: string
 }>()
 
 const player = inject<YoutubeAudioPlayerApi>(YOUTUBE_AUDIO_PLAYER_KEY)
@@ -20,8 +21,8 @@ const previewError = computed(() => (isActive.value ? player.error.value : null)
 const playLabel = computed(() => {
   if (previewError.value) return previewError.value
   if (playButtonLoading.value) return 'Loading preview'
-  if (isPlayingHere.value) return 'Pause'
-  return 'Play'
+  const action = isPlayingHere.value ? 'Pause' : 'Play'
+  return props.title ? `${action} preview of “${props.title}”` : action
 })
 
 const scrubbing = ref(false)
@@ -47,6 +48,14 @@ const displayTime = computed(() => {
 })
 
 const formattedDuration = computed(() => formatTime(knownDuration.value))
+
+const scrubberLabel = computed(() =>
+  props.title ? `Seek preview of “${props.title}”` : 'Seek preview',
+)
+
+const scrubberValueText = computed(() =>
+  `${formatTime(displayTime.value)} of ${formattedDuration.value}`,
+)
 
 function formatTime(totalSeconds: number): string {
   if (!totalSeconds || !Number.isFinite(totalSeconds)) return '0:00'
@@ -135,6 +144,8 @@ function onScrubCommit(event: Event) {
         :max="isActive ? (knownDuration || 0) : 0"
         step="0.1"
         :value="displayTime"
+        :aria-label="scrubberLabel"
+        :aria-valuetext="scrubberValueText"
         :disabled="!isActive || !(knownDuration > 0)"
         :style="{ '--yt-progress': `${progressPercent}%` }"
         @pointerdown="onScrubStart"

@@ -85,6 +85,14 @@ function onPlaceholderSearch(term: string) {
   search()
 }
 
+function onRetrySearch() {
+  playEvent('buttonPrimary')
+  if (!query.value.trim()) {
+    query.value = submittedQuery.value
+  }
+  search()
+}
+
 async function onSelect(id: string) {
   await selectVideo(id)
 }
@@ -158,12 +166,35 @@ onUnmounted(() => {
     </div>
 
     <div :class="embedded ? 'flex flex-1 min-h-0 flex-col overflow-hidden' : ''">
-      <p
+      <div
         v-if="status === 'error'"
-        class="font-maru-mono font-maru-regular text-sm text-maru-red py-4 border-maru rounded-maru bg-maru-red-lighter px-4"
+        class="border-maru rounded-maru bg-maru-red-lighter flex flex-col p-2 sm:p-3"
+        :class="embedded ? 'flex-1 min-h-0 overflow-hidden justify-center' : ''"
       >
-        {{ errorMessage }}
-      </p>
+        <div
+          class="empty-state"
+          :class="embedded ? 'flex-1 min-h-0' : 'min-h-32 py-6'"
+          role="alert"
+        >
+          <MaruEmoji
+            name="ElectricPlugRed"
+            size="empty"
+          />
+          <p class="empty-state-title">
+            The search came unplugged
+          </p>
+          <p class="empty-state-meta max-w-lg">
+            {{ errorMessage }}
+          </p>
+          <button
+            type="button"
+            class="maru-button maru-button--sm bg-maru-white text-maru-black mt-3"
+            @click="onRetrySearch"
+          >
+            <span class="maru-button__label">Try again</span>
+          </button>
+        </div>
+      </div>
 
       <YoutubePickerResultsPane
         v-else

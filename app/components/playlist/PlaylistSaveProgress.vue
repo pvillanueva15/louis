@@ -94,8 +94,6 @@ const metaClass = computed(() =>
     : 'font-maru-mono text-[1.25rem] leading-tight text-maru-black/60',
 )
 
-const fillComplete = computed(() => props.progress.progress >= 100)
-
 const SCRUBBER_EMOJIS: readonly EmojiId[] = [
   'HotDog', 'MusicalNotes', 'MusicalNote', 'VideoGame', 'OpticalDisk',
   'Headphone', 'BeamingFaceWithSmilingEyes', '1stPlaceMedal', 'DisguisedFace',
@@ -109,8 +107,12 @@ const thumbLeft = computed(() => {
   return `${Math.min(96, Math.max(4, progress))}%`
 })
 
-const operationFillWidth = computed(() =>
-  `${Math.min(100, Math.max(0, Math.round(displayedOperationProgress.value)))}%`,
+const overallFillScale = computed(() =>
+  `${Math.min(100, Math.max(0, props.progress.progress)) / 100}`,
+)
+
+const operationFillScale = computed(() =>
+  `${Math.min(100, Math.max(0, displayedOperationProgress.value)) / 100}`,
 )
 </script>
 
@@ -151,8 +153,7 @@ const operationFillWidth = computed(() =>
       >
         <div
           class="save-progress-bar__fill"
-          :class="{ 'save-progress-bar__fill--complete': fillComplete }"
-          :style="{ width: `${progress.progress}%` }"
+          :style="{ '--save-progress': overallFillScale }"
         />
       </div>
       <span
@@ -173,8 +174,8 @@ const operationFillWidth = computed(() =>
       :aria-label="`${overallLabel} ${progress.progress}%`"
     >
       <div
-        class="h-full bg-maru-magenta transition-[width] duration-300"
-        :style="{ width: `${progress.progress}%` }"
+        class="h-full w-full origin-left bg-maru-magenta transition-transform duration-300"
+        :style="{ transform: `scaleX(${overallFillScale})` }"
       />
     </div>
 
@@ -196,7 +197,7 @@ const operationFillWidth = computed(() =>
       >
         <div
           class="save-operation-bar__fill"
-          :style="{ width: operationFillWidth }"
+          :style="{ '--save-operation': operationFillScale }"
         />
       </div>
     </div>
