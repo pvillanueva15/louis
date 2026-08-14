@@ -26,6 +26,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 - In-process singleflight for concurrent downloads of the same YouTube id (preview stampede protection).
 
 ### Changed
+- Loading ceremonies (YouTube search, card opening, the Yoto connect gate) play their full intro only the first time per tab session; repeats keep the animation but hold only briefly.
 - Personal icon uploads now block blind retry after uncertain or accepted-but-unrefreshed outcomes until My Icons is explicitly refreshed.
 - Expected anon→cookies escalate and retries log at info level (not warn/error).
 - Long API errors use h3 `message` instead of `statusMessage` (avoids future sanitization warnings).

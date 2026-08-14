@@ -1,3 +1,4 @@
+import { ceremonyHoldMs } from '~/utils/ceremonyWarmth'
 import type { PickerStatus, YoutubeSearchResponse, YoutubeVideo, YoutubeVideoSummary } from './types'
 
 const MIN_SEARCH_LOADING_MS = 2000
@@ -18,8 +19,8 @@ export function useYoutubePicker(maxResults = 12) {
 
   let searchGeneration = 0
 
-  async function ensureMinLoadingTime(startedAt: number) {
-    const remaining = MIN_SEARCH_LOADING_MS - (Date.now() - startedAt)
+  async function ensureMinLoadingTime(startedAt: number, minMs: number) {
+    const remaining = minMs - (Date.now() - startedAt)
     if (remaining > 0) {
       await new Promise(resolve => setTimeout(resolve, remaining))
     }
@@ -64,6 +65,7 @@ export function useYoutubePicker(maxResults = 12) {
       searchGeneration += 1
       const generation = searchGeneration
       const loadingStartedAt = Date.now()
+      const minLoadingMs = ceremonyHoldMs('search-loading', MIN_SEARCH_LOADING_MS)
       status.value = 'loading'
       errorMessage.value = ''
       pendingEnableLongTracks.value = false
@@ -80,7 +82,7 @@ export function useYoutubePicker(maxResults = 12) {
 
         results.value = data.items
         nextPageToken.value = data.nextPageToken
-        await ensureMinLoadingTime(loadingStartedAt)
+        await ensureMinLoadingTime(loadingStartedAt, minLoadingMs)
         if (generation !== searchGeneration) return
         status.value = 'idle'
       }
@@ -89,7 +91,7 @@ export function useYoutubePicker(maxResults = 12) {
         const fetchErr = err as { statusMessage?: string; data?: { statusMessage?: string }; message?: string }
         errorMessage.value = fetchErr.data?.statusMessage ?? fetchErr.statusMessage ?? fetchErr.message ?? 'Search failed'
         results.value = []
-        await ensureMinLoadingTime(loadingStartedAt)
+        await ensureMinLoadingTime(loadingStartedAt, minLoadingMs)
         if (generation !== searchGeneration) return
         status.value = 'error'
       }
