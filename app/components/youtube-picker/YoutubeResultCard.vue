@@ -3,6 +3,7 @@ import { useDraggable } from '@dnd-kit/vue'
 import MaruTooltip from '~/components/ui/MaruTooltip.vue'
 import type { ResultsLayout, YoutubeVideoSummary } from './types'
 import YoutubePickerAudioControls from './YoutubePickerAudioControls.vue'
+import { useAddToPlaylist } from './useAddToPlaylist'
 import { resultDragId, type ResultDragData } from '../playlist/dnd'
 import {
   formatDurationSeconds,
@@ -28,6 +29,12 @@ const emit = defineEmits<{
 }>()
 
 const { allowLongTracks } = useUserPreferences()
+const {
+  available: playlistAvailable,
+  canAdd,
+  isAdded,
+  addToPlaylist,
+} = useAddToPlaylist()
 
 const element = ref<HTMLElement | null>(null)
 const handle = ref<HTMLElement | null>(null)
@@ -61,6 +68,25 @@ const { isDragging } = useDraggable({
     video: props.video,
   }),
 })
+
+const added = computed(() => isAdded(props.video.id))
+const addBlocked = computed(() => added.value || !canAdd.value)
+
+const addAriaLabel = computed(() => added.value
+  ? `“${props.video.title}” is already in the playlist`
+  : `Add “${props.video.title}” to playlist`)
+
+const addTitle = computed(() => added.value ? 'Already in playlist' : 'Add to playlist')
+
+const addButtonClass = computed(() => [
+  added.value ? 'yt-result-add--added' : '',
+  !added.value && !canAdd.value ? 'yt-result-add--blocked' : '',
+])
+
+function onAddToPlaylist(event: Event) {
+  event.stopPropagation()
+  addToPlaylist(props.video)
+}
 
 const shellClass = computed(() => [
   props.focused
@@ -139,6 +165,28 @@ function onEnableLongTracks(event: Event) {
           />
         </div>
       </div>
+
+      <button
+        v-if="playlistAvailable && !restricted"
+        type="button"
+        class="yt-result-add shrink-0 self-center"
+        :class="addButtonClass"
+        :aria-disabled="addBlocked || undefined"
+        :aria-label="addAriaLabel"
+        :title="addTitle"
+        @click="onAddToPlaylist"
+      >
+        <span
+          v-if="added"
+          class="yt-result-add__check"
+          aria-hidden="true"
+        />
+        <span
+          v-else
+          class="yt-result-add__plus"
+          aria-hidden="true"
+        />
+      </button>
     </div>
 
     <div
@@ -205,6 +253,27 @@ function onEnableLongTracks(event: Event) {
           aria-label="Drag to playlist"
         >
           <span /><span /><span />
+        </button>
+        <button
+          v-if="playlistAvailable && !restricted"
+          type="button"
+          class="yt-result-add absolute top-2 right-2 z-10"
+          :class="addButtonClass"
+          :aria-disabled="addBlocked || undefined"
+          :aria-label="addAriaLabel"
+          :title="addTitle"
+          @click="onAddToPlaylist"
+        >
+          <span
+            v-if="added"
+            class="yt-result-add__check"
+            aria-hidden="true"
+          />
+          <span
+            v-else
+            class="yt-result-add__plus"
+            aria-hidden="true"
+          />
         </button>
       </div>
       <span

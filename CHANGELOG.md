@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Click and keyboard add path for YouTube results: every result gets a + button that appends it to the playlist and shows an already-added state, Enter adds the focused result, and `/` or Cmd/Ctrl+K jumps to the search field.
 - Standalone My Icons can open a trusted personal icon in Icon Studio as an in-memory copy and upload the result without changing or assigning the source icon.
 - Per-track icon assignment, clearing, Reset, and rapid navigation for standalone and Save As drafts before Create.
 - Fast multi-track icon assignment from the playlist editor, with previous and next navigation.
@@ -39,6 +40,9 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 - Expected anon→cookies escalate and retries log at info level (not warn/error).
 - Long API errors use h3 `message` instead of `statusMessage` (avoids future sanitization warnings).
 - Demo runbook: cookies required on cloud IPs, `YTDLP_CACHE_BUST`, restart/job-loss notes, how to read yt-dlp logs.
+
+### Fixed
+- Backspace in the YouTube search field no longer plays the blocked-action thunk on every keypress; deleting characters now ticks like typing.
 
 ## [1.0.0] - 2026-07-22
 
