@@ -635,11 +635,15 @@ body {
   }
 }
 
+/* Phone: sits inside the frame, vertically centered, at a full tap size —
+   poking out of the corner overlapped the frame and glyphs at small widths. */
 .typetester-inline--compact .typetester-inline-clear {
-  width: 2.4rem;
-  height: 2.4rem;
+  top: 50%;
+  right: 0.4rem;
+  width: 2.75rem;
+  height: 2.75rem;
   font-size: 1.4rem;
-  transform: translate(30%, -30%);
+  transform: translate(0, -50%);
 }
 
 .typetester-inline--compact .typetester-inline-clear .maru-emoji {
@@ -649,9 +653,12 @@ body {
 
 @media (min-width: 600px) {
   .typetester-inline--compact .typetester-inline-clear {
+    top: 0;
+    right: 0;
     width: 2.6rem;
     height: 2.6rem;
     font-size: 1.6rem;
+    transform: translate(30%, -30%);
   }
 
   .typetester-inline--compact .typetester-inline-clear .maru-emoji {
@@ -812,9 +819,35 @@ body {
   border-radius: 0 0 var(--radius-maru) var(--radius-maru);
 }
 
+/* Phone: 6.4rem shows ~4 characters at 375px; 2.6rem fits a ~12+ character
+   query while keeping Dongle well above its ~1.1rem floor. */
 .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-ruler,
 .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-stack {
-  font-size: 6.4rem;
+  font-size: 2.6rem;
+}
+
+@media (min-width: 600px) {
+  .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-ruler,
+  .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-stack {
+    font-size: 6.4rem;
+  }
+}
+
+/* = 4.8rem at the ≥600px 6.4rem size; scales with the phone size above. */
+.typetester-inline-mono.typetester-inline--compact .typetester-inline-input {
+  height: 0.75em;
+}
+
+/* Phone: reserve room on both sides so the centered query never runs
+   under the clear button (symmetric so the text stays centered). */
+.typetester-inline--compact .typetester-inline-input-area {
+  padding-inline: 3.25rem;
+}
+
+@media (min-width: 600px) {
+  .typetester-inline--compact .typetester-inline-input-area {
+    padding-inline: 0;
+  }
 }
 
 .typetester-inline--compact .typetester-inline-input-stack {
@@ -1141,6 +1174,13 @@ body {
   .yt-result-add:active:not([aria-disabled="true"]) {
     scale: none;
     translate: none;
+  }
+}
+
+@media (max-width: 599.98px) {
+  .yt-result-add {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 }
 
@@ -1887,6 +1927,8 @@ body {
 .panel-footer-btn--short {
   font-size: 1.125rem;
   padding: 0.4375rem 0.875rem;
+  /* Phone: full tap-target height; reset at ≥600px where a pointer clicks */
+  min-height: 2.75rem;
 }
 
 @media (min-width: 600px) {
@@ -1898,6 +1940,7 @@ body {
   .panel-footer-btn--short {
     font-size: 1.375rem;
     padding: 0.25rem 1rem;
+    min-height: 0;
   }
 }
 

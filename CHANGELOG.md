@@ -12,6 +12,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ### Added
 - Click and keyboard add path for YouTube results: every result gets a + button that appends it to the playlist and shows an already-added state, Enter adds the focused result, and `/` or Cmd/Ctrl+K jumps to the search field.
 - Browse mode: the connect-to-Yoto TV can be switched off with a "Just looking" power button (or Escape) to search, preview, and arrange playlists without an account. The dismissal lasts for the tab session, My Cards offers Connect Yoto and New Playlist while disconnected, saving re-summons the TV, and an arranged playlist survives the Yoto OAuth redirect.
+- Phone layout (below 600px): the console collapses to a scrolling stack of full-width bays (search, playlist, My Cards), search results get readable titles, playlist footer actions wrap instead of clipping, and the search field scales so the typed query is visible.
 - Standalone My Icons can open a trusted personal icon in Icon Studio as an in-memory copy and upload the result without changing or assigning the source icon.
 - Per-track icon assignment, clearing, Reset, and rapid navigation for standalone and Save As drafts before Create.
 - Fast multi-track icon assignment from the playlist editor, with previous and next navigation.

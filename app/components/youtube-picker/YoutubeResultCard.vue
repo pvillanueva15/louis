@@ -100,6 +100,7 @@ function onEnableLongTracks(event: Event) {
   event.stopPropagation()
   emit('enableLongTracks')
 }
+
 </script>
 
 <template>
@@ -121,7 +122,7 @@ function onEnableLongTracks(event: Event) {
           <img
             :src="video.thumbnailUrl"
             alt=""
-            class="yt-result-card__thumb-img w-28 sm:w-36 aspect-video object-cover"
+            class="yt-result-card__thumb-img w-24 sm:w-36 aspect-video object-cover"
             loading="lazy"
           >
           <span
@@ -151,8 +152,8 @@ function onEnableLongTracks(event: Event) {
           :aria-label="`Select “${video.title}” by ${video.channelTitle}`"
           @click="emit('select', video.id)"
         >
-          <p class="yt-result-card__title font-maru-medium text-3xl sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
-          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
+          <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
+          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.4rem] sm:text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
         </button>
 
         <div
@@ -287,8 +288,8 @@ function onEnableLongTracks(event: Event) {
           :aria-label="`Select “${video.title}” by ${video.channelTitle}`"
           @click="emit('select', video.id)"
         >
-          <p class="yt-result-card__title font-maru-medium text-3xl sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
-          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
+          <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
+          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.4rem] sm:text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
         </button>
         <div
           v-if="!restricted"
