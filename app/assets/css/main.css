@@ -2422,6 +2422,82 @@ body {
   }
 }
 
+/*
+ * Power switch on the TV chassis — "Just looking" dismisses the gate into
+ * browse mode. Sits on the lower-right bezel, outside the screen well, in
+ * chassis putty (the resting color of an off switch).
+ */
+.yoto-auth-gate__power {
+  position: absolute;
+  right: 17.5%;
+  bottom: 5.5%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.65rem 0.2rem;
+  border: 2px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-gray-light);
+  color: var(--color-maru-black);
+  font-family: var(--font-maru-mono);
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--color-maru-black);
+  opacity: 0;
+  animation: yoto-auth-gate-content-in 0.4s cubic-bezier(0.2, 0, 0, 1) forwards;
+  animation-delay: 1.42s;
+  transition:
+    translate 0.15s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+/* Dongle's ink sits high — nudge the label down by eye. */
+.yoto-auth-gate__power-label {
+  position: relative;
+  top: 1px;
+}
+
+.yoto-auth-gate__power:hover {
+  translate: -1px -1px;
+  box-shadow: 3px 3px 0 var(--color-maru-black);
+}
+
+.yoto-auth-gate__power:active {
+  translate: 1px 1px;
+  box-shadow: 1px 1px 0 var(--color-maru-black);
+}
+
+.yoto-auth-gate__power:focus-visible {
+  outline: 3px solid var(--color-maru-blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yoto-auth-gate__power {
+    animation: yoto-auth-gate-content-in-reduced 0.35s ease-out forwards;
+    animation-delay: 0.18s;
+    transition: box-shadow 0.15s ease-out;
+  }
+
+  .yoto-auth-gate__power:hover {
+    translate: 0 0;
+    box-shadow: 3px 3px 0 var(--color-maru-black);
+  }
+
+  .yoto-auth-gate__power:active {
+    translate: 0 0;
+  }
+}
+
+.yoto-auth-gate--reduced .yoto-auth-gate__power {
+  animation: yoto-auth-gate-content-in-reduced 0.35s ease-out forwards;
+  animation-delay: 0.18s;
+}
+
 @keyframes yoto-auth-tv-boot {
   0%,
   7% {

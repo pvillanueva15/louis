@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
+import { YOTO_MYO_KEY } from '~/components/yoto-myo/keys'
 import { useSaveProgressTestMode } from '~/components/playlist/saveProgressTestFixture'
 import PlaylistCapacityMeters from '~/components/playlist/PlaylistCapacityMeters.vue'
 import {
@@ -14,6 +15,7 @@ import { getCardTitleValidationError } from '#shared/yoto/cardMutation'
 import { RAW_STRUCTURAL_MIX_MESSAGE } from '#shared/myo-editor/rawTrackManagement'
 
 const editor = inject(MYO_EDITOR_KEY, null)
+const yoto = inject(YOTO_MYO_KEY, null)
 const { playEvent } = useUiSound()
 
 const saveProgressTestMode = useSaveProgressTestMode()
@@ -118,6 +120,23 @@ const canSaveAs = computed(() => Boolean(
   && !saveProgressTestMode.value,
 ))
 
+/**
+ * Saving needs a Yoto session with write scope; browsing does not. When a
+ * save is attempted without one, the auth-gate TV returns instead.
+ */
+const needsYotoConnection = computed(() => Boolean(
+  yoto
+  && yoto.status.value !== 'loading'
+  && (!yoto.connected.value || !yoto.hasWriteScope.value),
+))
+
+function summonConnectGate(): boolean {
+  if (!needsYotoConnection.value || !yoto) return false
+  playEvent('buttonPrimary')
+  yoto.summonGate('save')
+  return true
+}
+
 function closeCapacityConfirm() {
   showCapacityConfirm.value = false
 }
@@ -136,6 +155,8 @@ function onSave() {
     return
   }
 
+  if (summonConnectGate()) return
+
   if (overCapacity.value && (isNewPlaylist?.value || playlistDirty?.value)) {
     playEvent('buttonPrimary')
     showCapacityConfirm.value = true
@@ -149,6 +170,10 @@ function onSave() {
 function onConfirmRiskySave() {
   if (!canSave.value) {
     playEvent('disabled')
+    return
+  }
+  if (summonConnectGate()) {
+    closeCapacityConfirm()
     return
   }
   playEvent('buttonPrimary')
@@ -176,6 +201,7 @@ function onSaveAs() {
     playEvent('disabled')
     return
   }
+  if (summonConnectGate()) return
   playEvent('buttonPrimary')
   editor?.saveAsCard()
 }

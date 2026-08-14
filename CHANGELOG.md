@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Browse mode: the connect-to-Yoto TV can be switched off with a "Just looking" power button (or Escape) to search, preview, and arrange playlists without an account. The dismissal lasts for the tab session, My Cards offers Connect Yoto and New Playlist while disconnected, saving re-summons the TV, and an arranged playlist survives the Yoto OAuth redirect.
 - Standalone My Icons can open a trusted personal icon in Icon Studio as an in-memory copy and upload the result without changing or assigning the source icon.
 - Per-track icon assignment, clearing, Reset, and rapid navigation for standalone and Save As drafts before Create.
 - Fast multi-track icon assignment from the playlist editor, with previous and next navigation.
