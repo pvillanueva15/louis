@@ -10,6 +10,7 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Phone layout (below 600px): the console collapses to a scrolling stack of full-width bays (search, playlist, My Cards), search results get readable titles and a tap-to-add button, playlist footer actions wrap instead of clipping, and the search field scales so the typed query is visible.
 - Standalone My Icons can open a trusted personal icon in Icon Studio as an in-memory copy and upload the result without changing or assigning the source icon.
 - Per-track icon assignment, clearing, Reset, and rapid navigation for standalone and Save As drafts before Create.
 - Fast multi-track icon assignment from the playlist editor, with previous and next navigation.

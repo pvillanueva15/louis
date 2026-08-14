@@ -635,11 +635,15 @@ body {
   }
 }
 
+/* Phone: sits inside the frame, vertically centered, at a full tap size —
+   poking out of the corner overlapped the frame and glyphs at small widths. */
 .typetester-inline--compact .typetester-inline-clear {
-  width: 2.4rem;
-  height: 2.4rem;
+  top: 50%;
+  right: 0.4rem;
+  width: 2.75rem;
+  height: 2.75rem;
   font-size: 1.4rem;
-  transform: translate(30%, -30%);
+  transform: translate(0, -50%);
 }
 
 .typetester-inline--compact .typetester-inline-clear .maru-emoji {
@@ -649,9 +653,12 @@ body {
 
 @media (min-width: 600px) {
   .typetester-inline--compact .typetester-inline-clear {
+    top: 0;
+    right: 0;
     width: 2.6rem;
     height: 2.6rem;
     font-size: 1.6rem;
+    transform: translate(30%, -30%);
   }
 
   .typetester-inline--compact .typetester-inline-clear .maru-emoji {
@@ -814,9 +821,35 @@ body {
   border-radius: 0 0 var(--radius-maru) var(--radius-maru);
 }
 
+/* Phone: 6.4rem shows ~4 characters at 375px; 2.6rem fits a ~12+ character
+   query while keeping Dongle well above its ~1.1rem floor. */
 .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-ruler,
 .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-stack {
-  font-size: 6.4rem;
+  font-size: 2.6rem;
+}
+
+@media (min-width: 600px) {
+  .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-ruler,
+  .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-stack {
+    font-size: 6.4rem;
+  }
+}
+
+/* = 4.8rem at the ≥600px 6.4rem size; scales with the phone size above. */
+.typetester-inline-mono.typetester-inline--compact .typetester-inline-input {
+  height: 0.75em;
+}
+
+/* Phone: reserve room on both sides so the centered query never runs
+   under the clear button (symmetric so the text stays centered). */
+.typetester-inline--compact .typetester-inline-input-area {
+  padding-inline: 3.25rem;
+}
+
+@media (min-width: 600px) {
+  .typetester-inline--compact .typetester-inline-input-area {
+    padding-inline: 0;
+  }
 }
 
 .typetester-inline--compact .typetester-inline-input-stack {
@@ -1042,6 +1075,55 @@ body {
   font-size: 1.05rem;
   line-height: 1.05;
   pointer-events: none;
+}
+
+/* Phone-only tap-to-add — cross-bay drag is nearly impossible on touch,
+   so result rows get an explicit control. Hidden here (not via sm:hidden)
+   because these unlayered rules would beat the layered utility. */
+.yt-result-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-blue);
+  color: var(--color-maru-white);
+  font-family: var(--font-maru);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  cursor: pointer;
+  transition: scale 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+.yt-result-add:active:not([aria-disabled='true']) {
+  scale: 0.96;
+}
+
+.yt-result-add[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yt-result-add--added {
+  background: var(--color-maru-green-light);
+  color: var(--color-maru-black);
+}
+
+.yt-result-add__label {
+  /* Dongle's ink sits high; nudge the label back to optical center */
+  position: relative;
+  top: 2px;
+}
+
+@media (min-width: 600px) {
+  .yt-result-add {
+    display: none;
+  }
 }
 
 /* ─── YouTube audio controls (chunky Maru) ─── */
@@ -1763,6 +1845,8 @@ body {
 .panel-footer-btn--short {
   font-size: 1.125rem;
   padding: 0.4375rem 0.875rem;
+  /* Phone: full tap-target height; reset at ≥600px where a pointer clicks */
+  min-height: 2.75rem;
 }
 
 @media (min-width: 600px) {
@@ -1774,6 +1858,7 @@ body {
   .panel-footer-btn--short {
     font-size: 1.375rem;
     padding: 0.25rem 1rem;
+    min-height: 0;
   }
 }
 

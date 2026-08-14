@@ -4,6 +4,8 @@ import MaruTooltip from '~/components/ui/MaruTooltip.vue'
 import type { ResultsLayout, YoutubeVideoSummary } from './types'
 import YoutubePickerAudioControls from './YoutubePickerAudioControls.vue'
 import { resultDragId, type ResultDragData } from '../playlist/dnd'
+import { pickerVideoToPlaylistTrack } from '../playlist/types'
+import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
 import {
   formatDurationSeconds,
   formatYoutubeDurationIso,
@@ -28,6 +30,14 @@ const emit = defineEmits<{
 }>()
 
 const { allowLongTracks } = useUserPreferences()
+const { playEvent } = useUiSound()
+
+/**
+ * Optional so the picker stays drop-in standalone; when the editor is
+ * provided, phone users get a tap-to-add control (cross-bay drag is
+ * nearly impossible on touch).
+ */
+const editor = inject(MYO_EDITOR_KEY, null)
 
 const element = ref<HTMLElement | null>(null)
 const handle = ref<HTMLElement | null>(null)
@@ -74,6 +84,30 @@ function onEnableLongTracks(event: Event) {
   event.stopPropagation()
   emit('enableLongTracks')
 }
+
+const inPlaylist = computed(() => Boolean(
+  editor?.playlist.value.some(
+    track => track.youtubeId === props.video.id || track.id === props.video.id,
+  ),
+))
+
+const canQuickAdd = computed(() => Boolean(
+  editor
+  && editor.isEditing.value
+  && !editor.isPlaylistLocked.value
+  && !editor.loading.value
+  && !inPlaylist.value,
+))
+
+function onQuickAdd(event: Event) {
+  event.stopPropagation()
+  if (!editor || !canQuickAdd.value) {
+    playEvent('disabled')
+    return
+  }
+  const result = editor.appendTracks([pickerVideoToPlaylistTrack(props.video)])
+  playEvent(result.ok ? 'drop' : 'disabled')
+}
 </script>
 
 <template>
@@ -96,7 +130,7 @@ function onEnableLongTracks(event: Event) {
           <img
             :src="video.thumbnailUrl"
             :alt="video.title"
-            class="yt-result-card__thumb-img w-28 sm:w-36 aspect-video object-cover"
+            class="yt-result-card__thumb-img w-24 sm:w-36 aspect-video object-cover"
             loading="lazy"
           >
           <span
@@ -113,6 +147,17 @@ function onEnableLongTracks(event: Event) {
         >
           <span /><span /><span />
         </button>
+        <button
+          v-if="!restricted && editor"
+          type="button"
+          class="yt-result-add"
+          :class="{ 'yt-result-add--added': inPlaylist }"
+          :aria-disabled="!canQuickAdd || undefined"
+          :aria-label="inPlaylist ? 'Already in playlist' : 'Add to playlist'"
+          @click="onQuickAdd"
+        >
+          <span class="yt-result-add__label">{{ inPlaylist ? 'Added' : 'Add' }}</span>
+        </button>
         <span
           v-if="showLongTrackChip"
           class="yt-result-long-chip font-maru-mono"
@@ -125,8 +170,8 @@ function onEnableLongTracks(event: Event) {
           class="min-w-0 w-full text-left"
           @click="emit('select', video.id)"
         >
-          <p class="yt-result-card__title font-maru-medium text-3xl sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
-          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
+          <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
+          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.4rem] sm:text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
         </button>
 
         <div
@@ -215,8 +260,8 @@ function onEnableLongTracks(event: Event) {
           class="w-full text-left"
           @click="emit('select', video.id)"
         >
-          <p class="yt-result-card__title font-maru-medium text-3xl sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
-          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
+          <p class="yt-result-card__title font-maru-medium text-[1.6rem] sm:text-[2rem] leading-[0.8] line-clamp-2 text-pretty">{{ video.title }}</p>
+          <p class="yt-result-card__meta font-maru-mono font-maru-regular text-[1.4rem] sm:text-[1.75rem] leading-[0.8] text-maru-black/75 mt-0">{{ video.channelTitle }}</p>
         </button>
         <div
           v-if="!restricted"
@@ -224,6 +269,17 @@ function onEnableLongTracks(event: Event) {
         >
           <YoutubePickerAudioControls :video-id="video.id" />
         </div>
+        <button
+          v-if="!restricted && editor"
+          type="button"
+          class="yt-result-add mt-2"
+          :class="{ 'yt-result-add--added': inPlaylist }"
+          :aria-disabled="!canQuickAdd || undefined"
+          :aria-label="inPlaylist ? 'Already in playlist' : 'Add to playlist'"
+          @click="onQuickAdd"
+        >
+          <span class="yt-result-add__label">{{ inPlaylist ? 'Added' : 'Add' }}</span>
+        </button>
       </div>
     </div>
 

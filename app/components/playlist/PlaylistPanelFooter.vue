@@ -222,9 +222,10 @@ watch(
       >
         {{ footerHint }}
       </p>
-      <div class="w-full flex items-center gap-2 sm:gap-3 min-w-0">
+      <div class="w-full flex items-center gap-2 sm:gap-3 min-w-0 max-sm:flex-wrap">
         <PlaylistCapacityMeters />
-        <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+        <!-- Phone: actions take their own full-width line and wrap so no button ever clips. -->
+        <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0 max-sm:w-full max-sm:flex-wrap max-sm:justify-end">
           <button
             v-if="selectedCardId && !isNewPlaylist"
             type="button"
