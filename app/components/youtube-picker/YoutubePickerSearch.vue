@@ -100,8 +100,8 @@ function isTypingKey(event: KeyboardEvent): boolean {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Backspace') {
-    playEvent('disabled')
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    if (query.value.length > 0) playEvent('type')
   }
   else if (isTypingKey(event)) {
     playEvent('type')
@@ -130,6 +130,7 @@ function stopSuggestions() {
 }
 
 function startSuggestions() {
+  if (overlayPaused.value) return
   suggestionsStopped.value = false
   animatedPlaceholder.value = ''
   measuredTextWidth.value = 0
@@ -142,6 +143,24 @@ function startSuggestions() {
   })
   typewriter.start()
 }
+
+/** A full-screen overlay (auth TV, splash, welcome) has the app inert — no typing behind the dimmer. */
+const overlayPaused = ref(false)
+let inertObserver: MutationObserver | null = null
+
+function syncOverlayPause() {
+  overlayPaused.value = Boolean(containerRef.value?.closest('[inert]'))
+}
+
+watch(overlayPaused, (paused) => {
+  if (paused) {
+    typewriter?.stop()
+    typewriter = null
+  }
+  else if (!suggestionsStopped.value && !query.value.trim()) {
+    startSuggestions()
+  }
+})
 
 function onFocus() {
   inputFocused.value = true
@@ -156,6 +175,18 @@ function onInput() {
   stopSuggestions()
   syncMeasuredTextWidth()
 }
+
+/** Focus the search input (used by keyboard shortcuts); true when focus actually moved here. */
+function focusInput(): boolean {
+  const input = inputRef.value
+  if (!input || document.activeElement === input) return false
+  input.focus()
+  if (document.activeElement !== input) return false
+  input.select()
+  return true
+}
+
+defineExpose({ focusInput })
 
 function clearSearch() {
   playEvent('toggleOff')
@@ -176,7 +207,7 @@ watch(query, (value) => {
 })
 
 watch(() => props.placeholders, () => {
-  if (suggestionsStopped.value || query.value.trim()) return
+  if (suggestionsStopped.value || query.value.trim() || overlayPaused.value) return
   typewriter?.stop()
   typewriter = null
   startSuggestions()
@@ -194,18 +225,20 @@ onMounted(() => {
     syncMeasuredTextWidth()
   }
 
-  typewriter = createTypewriterCycle({
-    phrases: props.placeholders,
-    onUpdate: (text) => {
-      animatedPlaceholder.value = text
-    },
+  inertObserver = new MutationObserver(syncOverlayPause)
+  inertObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['inert'],
+    subtree: true,
   })
-  typewriter.start()
+  syncOverlayPause()
+  startSuggestions()
 })
 
 onUnmounted(() => {
   stopSuggestions()
   resizeObserver?.disconnect()
+  inertObserver?.disconnect()
 })
 </script>
 
@@ -252,6 +285,7 @@ onUnmounted(() => {
                 v-model="query"
                 type="text"
                 role="searchbox"
+                data-search-focus-anchor
                 class="typetester-inline-input"
                 :aria-label="label"
                 :placeholder="animatedPlaceholder"

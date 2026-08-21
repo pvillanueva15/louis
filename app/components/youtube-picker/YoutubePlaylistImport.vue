@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaruTooltip from '~/components/ui/MaruTooltip.vue'
 import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
 import { pickerVideoToPlaylistTrack } from '~/components/playlist/types'
 import {
@@ -253,15 +254,19 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 
 <template>
   <div class="playlist-import-launch">
-    <button
-      type="button"
-      class="maru-button maru-button--sm bg-maru-yellow text-maru-black"
-      :disabled="!canOpen"
-      :title="canOpen ? 'Import tracks from a public YouTube playlist' : 'Start a new playlist or select a MYO card first'"
-      @click="show"
+    <MaruTooltip
+      :text="canOpen ? 'Import tracks from a public YouTube playlist' : 'Start a new playlist or select a MYO card first'"
+      placement="bottom"
     >
-      <span class="maru-button__label">Import playlist</span>
-    </button>
+      <button
+        type="button"
+        class="maru-button maru-button--sm bg-maru-yellow text-maru-black"
+        :aria-disabled="canOpen ? undefined : 'true'"
+        @click="show"
+      >
+        <span class="maru-button__label">Import playlist</span>
+      </button>
+    </MaruTooltip>
   </div>
 
   <Teleport to="body">
@@ -464,7 +469,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   padding: .5rem 0 .75rem;
 }
 
-.playlist-import-launch button:disabled {
+.playlist-import-launch button[aria-disabled='true'] {
   cursor: not-allowed;
   opacity: .45;
 }

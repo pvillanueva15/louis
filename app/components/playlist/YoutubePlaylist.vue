@@ -9,6 +9,7 @@ import PlaylistItem from './PlaylistItem.vue'
 import PlaylistSaveProgress from './PlaylistSaveProgress.vue'
 import IconLibraryModal from '~/components/icon-library/IconLibraryModal.vue'
 import { useIconLibrary } from '~/components/icon-library/useIconLibrary'
+import { ceremonyHoldMs } from '~/utils/ceremonyWarmth'
 import type { PersonalIcon } from '#shared/yoto/iconContract'
 import {
   advanceRapidTrackIconAssignment,
@@ -370,20 +371,23 @@ const isYotoUnavailable = computed(() => {
 
 const isYotoLoading = computed(() => yoto?.status.value === 'loading')
 
+/** Disconnected browse mode still allows arranging a draft; the idle door only covers a bay with no edit in progress. */
+const isDisconnectedIdle = computed(() => isYotoUnavailable.value && !isEditing.value)
+
 const isYotoDisconnectGarage = ref(false)
 
 const isYotoPlaylistBlocked = computed(
-  () => isYotoUnavailable.value || isYotoLoading.value || isYotoDisconnectGarage.value,
+  () => isDisconnectedIdle.value || isYotoLoading.value || isYotoDisconnectGarage.value,
 )
 
 const showPlaylistItems = computed(() => {
   if (isYotoDisconnectGarage.value) return true
-  return !isYotoUnavailable.value && !isYotoLoading.value
+  return !isDisconnectedIdle.value && !isYotoLoading.value
 })
 
 const showEmptyState = computed(() => {
   if (isYotoDisconnectGarage.value) return false
-  if (isYotoUnavailable.value || isYotoLoading.value) return false
+  if (isDisconnectedIdle.value || isYotoLoading.value) return false
   return playlist.value.length === 0
 })
 
@@ -391,6 +395,7 @@ const isCardLoading = computed(() => loading.value && !isPlaylistLocked.value)
 
 const CARD_LOADING_MIN_MS = 3000
 const GARAGE_DOOR_MS = 520
+const CARD_LOADING_WARM_MS = GARAGE_DOOR_MS + 120
 
 type GarageDoorMode = 'card' | 'disconnect' | 'idle-disconnected' | null
 
@@ -398,6 +403,7 @@ const showCardLoadingGarage = ref(false)
 const garageDoorShut = ref(false)
 const garageDoorMode = ref<GarageDoorMode>(null)
 let cardLoadingStartedAt = 0
+let cardLoadingMinMs = CARD_LOADING_MIN_MS
 let cardLoadingDismissTimer: ReturnType<typeof setTimeout> | null = null
 let cardLoadingExitTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -478,7 +484,7 @@ function scheduleGarageDoorExit() {
   clearCardLoadingTimers()
 
   const elapsed = Date.now() - cardLoadingStartedAt
-  const remaining = Math.max(0, CARD_LOADING_MIN_MS - elapsed)
+  const remaining = Math.max(0, cardLoadingMinMs - elapsed)
 
   cardLoadingDismissTimer = setTimeout(() => {
     openGarageDoor()
@@ -488,6 +494,21 @@ function scheduleGarageDoorExit() {
       cardLoadingExitTimer = null
     }, GARAGE_DOOR_MS)
   }, remaining)
+}
+
+function skipGarageDoorHold() {
+  if (garageDoorMode.value !== 'card') return
+  if (isCardLoading.value) return
+  if (!garageDoorShut.value) return
+  if (!cardLoadingDismissTimer) return
+  clearTimeout(cardLoadingDismissTimer)
+  cardLoadingDismissTimer = null
+  openGarageDoor()
+  cardLoadingExitTimer = setTimeout(() => {
+    showCardLoadingGarage.value = false
+    garageDoorMode.value = null
+    cardLoadingExitTimer = null
+  }, GARAGE_DOOR_MS)
 }
 
 function onGarageDoorTransitionEnd(event: TransitionEvent) {
@@ -520,6 +541,8 @@ watch(isYotoUnavailable, (unavailable, wasUnavailable) => {
 
   if (!unavailable || wasUnavailable) return
 
+  if (isEditing.value) return
+
   const hadContent = playlist.value.length > 0 || Boolean(selectedCardId.value)
   if (!hadContent) {
     clearSelection(true)
@@ -530,9 +553,16 @@ watch(isYotoUnavailable, (unavailable, wasUnavailable) => {
 })
 
 watch(
-  () => isYotoUnavailable.value && !isYotoLoading.value,
+  () => isDisconnectedIdle.value && !isYotoLoading.value,
   (showIdle) => {
-    if (!showIdle) return
+    if (!showIdle) {
+      if (garageDoorMode.value === 'idle-disconnected') {
+        showCardLoadingGarage.value = false
+        garageDoorMode.value = null
+        garageDoorShut.value = false
+      }
+      return
+    }
     if (isYotoDisconnectGarage.value) return
     if (garageDoorMode.value === 'disconnect') return
     if (garageDoorMode.value === 'idle-disconnected') return
@@ -546,6 +576,7 @@ watch(isCardLoading, (loadingNow) => {
   if (loadingNow) {
     clearCardLoadingTimers()
     cardLoadingStartedAt = Date.now()
+    cardLoadingMinMs = ceremonyHoldMs('card-loading', CARD_LOADING_MIN_MS, CARD_LOADING_WARM_MS)
 
     if (!showCardLoadingGarage.value) {
       showGarageDoor('card')
@@ -698,6 +729,7 @@ watch(() => props.scrollToVideoId, async (id) => {
       aria-live="polite"
       :aria-busy="garageDoorMode === 'card' || garageDoorMode === 'disconnect'"
       @transitionend="onGarageDoorTransitionEnd"
+      @click="skipGarageDoorHold"
     >
       <PlaylistCardLoading
         :key="garageDoorMode === 'card' ? (selectedCardId ?? 'loading') : 'disconnected'"

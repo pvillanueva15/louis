@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import MaruHeading from '~/components/layout/MaruHeading.vue'
+import { MYO_EDITOR_KEY } from '~/components/myo-editor/keys'
+import { ceremonyHoldMs } from '~/utils/ceremonyWarmth'
 import { YOTO_MYO_KEY } from './keys'
 
 const GATE_DELAY_MS = 2000
@@ -23,6 +25,7 @@ const yoto = inject(YOTO_MYO_KEY)
 if (!yoto) {
   throw new Error('YotoAuthGate requires YOTO_MYO_KEY provider')
 }
+const editor = inject(MYO_EDITOR_KEY, null)
 
 const { playEvent } = useUiSound()
 
@@ -31,6 +34,9 @@ const {
   connected,
   hasWriteScope,
   errorMessage,
+  gateDismissed,
+  gateIntent,
+  dismissGate,
   connect,
   refresh,
 } = yoto
@@ -76,7 +82,9 @@ const copy = computed(() => {
     default:
       return {
         heading: 'Connect Louis to Yoto',
-        body: 'Link your account to load MYO cards and build playlists.',
+        body: gateIntent.value === 'save'
+          ? 'Link your account to save this playlist to a MYO card.'
+          : 'Link your account to load MYO cards and build playlists.',
         cta: 'Connect to Yoto',
         action: 'connect' as const,
       }
@@ -130,6 +138,12 @@ function onScreenAnimationEnd(event: AnimationEvent) {
   showGateWithDim()
 }
 
+function skipBoot() {
+  if (phase.value !== 'animating') return
+  clearTimers()
+  showGateWithDim()
+}
+
 function beginBoot() {
   if (!blockedReason.value) return
 
@@ -149,20 +163,27 @@ function beginBoot() {
   }, TV_BOOT_MS + 100)
 }
 
-function startGateSequence() {
+function startGateSequence(delayMs: number = GATE_DELAY_MS) {
   clearTimers()
   phase.value = 'waiting'
   setBlocking(false)
 
+  if (delayMs <= 0) {
+    beginBoot()
+    return
+  }
+
   delayTimer = setTimeout(() => {
     delayTimer = null
     beginBoot()
-  }, GATE_DELAY_MS)
+  }, ceremonyHoldMs('auth-gate', delayMs))
 }
 
 function onPrimaryAction() {
   if (copy.value.action === 'connect') {
     playEvent('toggleOn')
+    // Full-page redirect ahead — carry the arranged playlist across it.
+    editor?.prepareForAuthRedirect()
     connect()
     return
   }
@@ -172,10 +193,32 @@ function onPrimaryAction() {
   }
 }
 
+/** "Just looking" — power the TV off and browse without connecting. */
+function dismissToBrowse() {
+  playEvent('toggleOff')
+  dismissGate()
+  focusSearchField()
+}
+
+function focusSearchField() {
+  void nextTick(() => {
+    document
+      .querySelector<HTMLElement>('[data-search-focus-anchor]')
+      ?.focus()
+  })
+}
+
+function onWindowKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  if (phase.value !== 'visible' && phase.value !== 'animating') return
+  event.preventDefault()
+  dismissToBrowse()
+}
+
 watch(
-  [blockedReason, () => props.paused],
-  ([reason, paused]) => {
-    if (!reason) {
+  [blockedReason, () => props.paused, gateDismissed],
+  ([reason, paused, dismissed], previous) => {
+    if (!reason || dismissed) {
       hideGate()
       return
     }
@@ -189,7 +232,10 @@ watch(
       return
     }
     if (phase.value === 'hidden' || phase.value === 'waiting') {
-      startGateSequence()
+      // Re-summoned after a dismissal (Connect Yoto, save intent): the user
+      // asked for the TV, so boot right away instead of idling first.
+      const summoned = previous?.[2] === true
+      startGateSequence(summoned ? 0 : GATE_DELAY_MS)
     }
   },
   { immediate: true },
@@ -197,10 +243,12 @@ watch(
 
 onMounted(() => {
   prefersReducedMotion.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.addEventListener('keydown', onWindowKeydown)
 })
 
 onUnmounted(() => {
   clearTimers()
+  window.removeEventListener('keydown', onWindowKeydown)
 })
 </script>
 
@@ -210,6 +258,7 @@ onUnmounted(() => {
       v-if="showScreen"
       class="yoto-auth-gate"
       :class="gateClass"
+      @click="skipBoot"
     >
       <div
         class="yoto-auth-gate__backdrop"
@@ -266,6 +315,14 @@ onUnmounted(() => {
               <span class="maru-button__label">{{ copy.cta }}</span>
             </button>
           </div>
+          <button
+            type="button"
+            class="yoto-auth-gate__power"
+            aria-label="Just looking — turn the TV off and browse without connecting"
+            @click="dismissToBrowse"
+          >
+            <span class="yoto-auth-gate__power-label">Just looking</span>
+          </button>
         </div>
       </div>
     </div>

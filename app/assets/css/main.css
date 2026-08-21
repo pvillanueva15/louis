@@ -635,11 +635,15 @@ body {
   }
 }
 
+/* Phone: sits inside the frame, vertically centered, at a full tap size —
+   poking out of the corner overlapped the frame and glyphs at small widths. */
 .typetester-inline--compact .typetester-inline-clear {
-  width: 2.4rem;
-  height: 2.4rem;
+  top: 50%;
+  right: 0.4rem;
+  width: 2.75rem;
+  height: 2.75rem;
   font-size: 1.4rem;
-  transform: translate(30%, -30%);
+  transform: translate(0, -50%);
 }
 
 .typetester-inline--compact .typetester-inline-clear .maru-emoji {
@@ -649,9 +653,12 @@ body {
 
 @media (min-width: 600px) {
   .typetester-inline--compact .typetester-inline-clear {
+    top: 0;
+    right: 0;
     width: 2.6rem;
     height: 2.6rem;
     font-size: 1.6rem;
+    transform: translate(30%, -30%);
   }
 
   .typetester-inline--compact .typetester-inline-clear .maru-emoji {
@@ -700,12 +707,10 @@ body {
   max-width: 100%;
   width: 100%;
   min-height: 0.85em;
-  transition: width 40ms linear;
 }
 
 .typetester-inline-wave-wrap {
   max-width: 95%;
-  transition: width 40ms linear;
 }
 
 .typetester-inline-input-wrap:focus-within {
@@ -814,9 +819,35 @@ body {
   border-radius: 0 0 var(--radius-maru) var(--radius-maru);
 }
 
+/* Phone: 6.4rem shows ~4 characters at 375px; 2.6rem fits a ~12+ character
+   query while keeping Dongle well above its ~1.1rem floor. */
 .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-ruler,
 .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-stack {
-  font-size: 6.4rem;
+  font-size: 2.6rem;
+}
+
+@media (min-width: 600px) {
+  .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-ruler,
+  .typetester-inline-mono.typetester-inline--compact .typetester-inline-input-stack {
+    font-size: 6.4rem;
+  }
+}
+
+/* = 4.8rem at the ≥600px 6.4rem size; scales with the phone size above. */
+.typetester-inline-mono.typetester-inline--compact .typetester-inline-input {
+  height: 0.75em;
+}
+
+/* Phone: reserve room on both sides so the centered query never runs
+   under the clear button (symmetric so the text stays centered). */
+.typetester-inline--compact .typetester-inline-input-area {
+  padding-inline: 3.25rem;
+}
+
+@media (min-width: 600px) {
+  .typetester-inline--compact .typetester-inline-input-area {
+    padding-inline: 0;
+  }
 }
 
 .typetester-inline--compact .typetester-inline-input-stack {
@@ -869,6 +900,12 @@ body {
   z-index: 3;
   background: rgb(0 0 0 / 0.35);
   pointer-events: none;
+}
+
+/* Listening is free even when adding is gated: the preview controls sit above the quarantine scrim. */
+.yt-result-card--over-limit .yt-audio-controls {
+  position: relative;
+  z-index: 4;
 }
 
 .yt-result-card--over-limit .yt-result-card__thumb-img {
@@ -1044,6 +1081,126 @@ body {
   pointer-events: none;
 }
 
+/* ─── Result add-to-playlist button ─── */
+
+.yt-result-add {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 3px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-blue);
+  color: var(--color-maru-white);
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--color-maru-black);
+  transition:
+    scale 0.2s cubic-bezier(0.34, 1.45, 0.64, 1),
+    translate 0.2s cubic-bezier(0.34, 1.45, 0.64, 1),
+    box-shadow 0.2s ease-out,
+    background-color 0.15s ease-out;
+}
+
+.yt-result-add:hover:not([aria-disabled="true"]) {
+  translate: -1px -1px;
+  box-shadow: 3px 3px 0 var(--color-maru-black);
+}
+
+.yt-result-add:active:not([aria-disabled="true"]) {
+  scale: 0.96;
+  translate: 1px 1px;
+  box-shadow: 1px 1px 0 var(--color-maru-black);
+  transition-duration: 100ms;
+}
+
+.yt-result-add:focus-visible {
+  outline: 3px solid var(--color-maru-blue);
+  outline-offset: 2px;
+}
+
+.yt-result-add--added {
+  background: var(--color-maru-green-lighter);
+  color: var(--color-maru-black);
+  cursor: default;
+}
+
+.yt-result-add--blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yt-result-add__plus {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.yt-result-add__plus::before,
+.yt-result-add__plus::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.yt-result-add__plus::before {
+  width: 14px;
+  height: 3px;
+}
+
+.yt-result-add__plus::after {
+  width: 3px;
+  height: 14px;
+}
+
+.yt-result-add__check {
+  display: block;
+  width: 0.55rem;
+  height: 0.95rem;
+  margin-top: -0.15rem;
+  border-right: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  rotate: 40deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yt-result-add {
+    transition: background-color 0.15s ease-out;
+  }
+
+  .yt-result-add:hover:not([aria-disabled="true"]),
+  .yt-result-add:active:not([aria-disabled="true"]) {
+    scale: none;
+    translate: none;
+  }
+}
+
+@media (max-width: 599.98px) {
+  .yt-result-add {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  /* An inactive preview scrubber is a meaningless floating dot at phone widths. */
+  .yt-audio-range:disabled {
+    display: none;
+  }
+
+  /* The idle disconnected playlist bay collapses to a slim door strip so
+     Connect / New Playlist in My Cards stay within a screen's reach. */
+  .app-panel--playlist:has(.playlist-garage-door--instant.playlist-garage-door--shut) {
+    height: 11rem;
+  }
+}
+
 /* ─── YouTube audio controls (chunky Maru) ─── */
 
 .yt-audio-controls {
@@ -1214,6 +1371,18 @@ body {
   line-height: 1;
 }
 
+.yt-audio-slow-note {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-maru);
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--color-maru-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .yt-audio-range:active::-webkit-slider-thumb {
   cursor: grabbing;
 }
@@ -1315,6 +1484,30 @@ body {
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
+}
+
+/* One-shot "look here" pulse on the My Cards bay (uncertain create → Check My Cards) */
+.my-cards-attention {
+  animation: my-cards-attention 1.1s ease-out;
+}
+
+@keyframes my-cards-attention {
+  0%,
+  45%,
+  100% {
+    box-shadow: inset 0 0 0 0 var(--color-maru-black);
+  }
+
+  20%,
+  70% {
+    box-shadow: inset 0 0 0 4px var(--color-maru-black);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-cards-attention {
+    animation: none;
+  }
 }
 
 .playlist-remove {
@@ -1763,6 +1956,8 @@ body {
 .panel-footer-btn--short {
   font-size: 1.125rem;
   padding: 0.4375rem 0.875rem;
+  /* Phone: full tap-target height; reset at ≥600px where a pointer clicks */
+  min-height: 2.75rem;
 }
 
 @media (min-width: 600px) {
@@ -1774,6 +1969,7 @@ body {
   .panel-footer-btn--short {
     font-size: 1.375rem;
     padding: 0.25rem 1rem;
+    min-height: 0;
   }
 }
 
@@ -2081,14 +2277,11 @@ body {
 
 .save-progress-bar__fill {
   height: 100%;
-  min-width: 0;
-  border-radius: 999px 0 0 999px;
+  width: 100%;
+  transform: scaleX(var(--save-progress, 0));
+  transform-origin: left;
   background: var(--color-maru-magenta-light);
-  transition: width 0.35s ease-out;
-}
-
-.save-progress-bar__fill--complete {
-  border-radius: 999px;
+  transition: transform 0.35s ease-out;
 }
 
 .save-operation-bar {
@@ -2102,8 +2295,9 @@ body {
 
 .save-operation-bar__fill {
   height: 100%;
-  min-width: 0;
-  border-radius: 999px 0 0 999px;
+  width: 100%;
+  transform: scaleX(var(--save-operation, 0));
+  transform-origin: left;
   background: var(--color-maru-blue-light);
 }
 
@@ -2157,8 +2351,8 @@ body {
   bottom: 1rem;
   margin: 0;
   color: color-mix(in srgb, var(--color-maru-black) 55%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
+  font-family: var(--font-maru-mono);
+  font-size: 1.1rem;
   letter-spacing: 0.02em;
   user-select: none;
 }
@@ -2420,6 +2614,82 @@ body {
     translate: 0 0;
     box-shadow: 6px 6px 0 var(--color-maru-black);
   }
+}
+
+/*
+ * Power switch on the TV chassis — "Just looking" dismisses the gate into
+ * browse mode. Sits on the lower-right bezel, outside the screen well, in
+ * chassis putty (the resting color of an off switch).
+ */
+.yoto-auth-gate__power {
+  position: absolute;
+  right: 17.5%;
+  bottom: 5.5%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.65rem 0.2rem;
+  border: 2px solid var(--color-maru-black);
+  border-radius: var(--radius-maru);
+  background: var(--color-maru-gray-light);
+  color: var(--color-maru-black);
+  font-family: var(--font-maru-mono);
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--color-maru-black);
+  opacity: 0;
+  animation: yoto-auth-gate-content-in 0.4s cubic-bezier(0.2, 0, 0, 1) forwards;
+  animation-delay: 1.42s;
+  transition:
+    translate 0.15s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+/* Dongle's ink sits high — nudge the label down by eye. */
+.yoto-auth-gate__power-label {
+  position: relative;
+  top: 1px;
+}
+
+.yoto-auth-gate__power:hover {
+  translate: -1px -1px;
+  box-shadow: 3px 3px 0 var(--color-maru-black);
+}
+
+.yoto-auth-gate__power:active {
+  translate: 1px 1px;
+  box-shadow: 1px 1px 0 var(--color-maru-black);
+}
+
+.yoto-auth-gate__power:focus-visible {
+  outline: 3px solid var(--color-maru-blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yoto-auth-gate__power {
+    animation: yoto-auth-gate-content-in-reduced 0.35s ease-out forwards;
+    animation-delay: 0.18s;
+    transition: box-shadow 0.15s ease-out;
+  }
+
+  .yoto-auth-gate__power:hover {
+    translate: 0 0;
+    box-shadow: 3px 3px 0 var(--color-maru-black);
+  }
+
+  .yoto-auth-gate__power:active {
+    translate: 0 0;
+  }
+}
+
+.yoto-auth-gate--reduced .yoto-auth-gate__power {
+  animation: yoto-auth-gate-content-in-reduced 0.35s ease-out forwards;
+  animation-delay: 0.18s;
 }
 
 @keyframes yoto-auth-tv-boot {

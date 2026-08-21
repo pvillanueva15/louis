@@ -10,6 +10,9 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 ## [Unreleased]
 
 ### Added
+- Click and keyboard add path for YouTube results: every result gets a + button that appends it to the playlist and shows an already-added state, Enter adds the focused result, and `/` or Cmd/Ctrl+K jumps to the search field.
+- Browse mode: the connect-to-Yoto TV can be switched off with a "Just looking" power button (or Escape) to search, preview, and arrange playlists without an account. The dismissal lasts for the tab session, My Cards offers Connect Yoto and New Playlist while disconnected, saving re-summons the TV, and an arranged playlist survives the Yoto OAuth redirect.
+- Phone layout (below 600px): the console collapses to a scrolling stack of full-width bays (search, playlist, My Cards), search results get readable titles, playlist footer actions wrap instead of clipping, and the search field scales so the typed query is visible.
 - Standalone My Icons can open a trusted personal icon in Icon Studio as an in-memory copy and upload the result without changing or assigning the source icon.
 - Per-track icon assignment, clearing, Reset, and rapid navigation for standalone and Save As drafts before Create.
 - Fast multi-track icon assignment from the playlist editor, with previous and next navigation.
@@ -26,10 +29,27 @@ How we cut releases: [docs/RELEASE.md](docs/RELEASE.md).
 - In-process singleflight for concurrent downloads of the same YouTube id (preview stampede protection).
 
 ### Changed
+- Loading ceremonies (YouTube search, card opening, the Yoto connect gate) play their full intro only the first time per tab session; repeats keep the animation but hold only briefly.
+- "Check My Cards" after an uncertain playlist create is now a live button: it refreshes the card list and pulses the My Cards bay instead of doing nothing.
+- YouTube search failures now show a proper error state with the reason and a Try again button instead of a bare red line.
+- Search result thumbnail and title are one labeled select control, and preview play/seek controls announce which track they belong to.
+- Search results use conforming list semantics for assistive tech (previously a listbox with interactive controls nested in options).
+- The disabled Import playlist button now explains why it is disabled on keyboard focus, not only on mouse hover.
+- Save and operation progress bars animate with transforms instead of layout for smoother progress rendering.
+- The typewriter search placeholder pauses while a full-screen overlay (splash, auth TV, welcome) covers the app.
+- Search suggestion chips start their color cycle at a varied point per placeholder set; adjacent chips never share a hue.
+- A loading preview can be cancelled by tapping the play button again, and slow fetches explain themselves after a few seconds.
+- Over-limit tracks can now be previewed; only adding them to a playlist stays behind the long-tracks confirm.
+- On phones, the idle disconnected playlist bay collapses to a slim strip, inactive preview scrubbers hide, and result titles show up to three lines.
+- The TV boot and the card-loading garage hold can be skipped with a click once their work is done.
 - Personal icon uploads now block blind retry after uncertain or accepted-but-unrefreshed outcomes until My Icons is explicitly refreshed.
 - Expected anon→cookies escalate and retries log at info level (not warn/error).
 - Long API errors use h3 `message` instead of `statusMessage` (avoids future sanitization warnings).
 - Demo runbook: cookies required on cloud IPs, `YTDLP_CACHE_BUST`, restart/job-loss notes, how to read yt-dlp logs.
+
+### Fixed
+- Backspace in the YouTube search field no longer plays the blocked-action thunk on every keypress; deleting characters now ticks like typing.
+- Arranging a playlist while disconnected now shows the draft as you build it (tracks were being added behind the shut garage door), and drag-to-playlist works in browse mode.
 
 ## [1.0.0] - 2026-07-22
 

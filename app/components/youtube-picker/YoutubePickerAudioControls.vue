@@ -6,6 +6,7 @@ import {
 
 const props = defineProps<{
   videoId: string
+  title?: string
 }>()
 
 const player = inject<YoutubeAudioPlayerApi>(YOUTUBE_AUDIO_PLAYER_KEY)
@@ -19,9 +20,33 @@ const playButtonLoading = computed(() => isActive.value && player.isLoading.valu
 const previewError = computed(() => (isActive.value ? player.error.value : null))
 const playLabel = computed(() => {
   if (previewError.value) return previewError.value
-  if (playButtonLoading.value) return 'Loading preview'
-  if (isPlayingHere.value) return 'Pause'
-  return 'Play'
+  if (playButtonLoading.value) {
+    return props.title ? `Cancel loading preview of “${props.title}”` : 'Cancel loading preview'
+  }
+  const action = isPlayingHere.value ? 'Pause' : 'Play'
+  return props.title ? `${action} preview of “${props.title}”` : action
+})
+
+const slowLoading = ref(false)
+let slowLoadingTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(playButtonLoading, (loadingNow) => {
+  if (slowLoadingTimer) {
+    clearTimeout(slowLoadingTimer)
+    slowLoadingTimer = null
+  }
+  if (loadingNow) {
+    slowLoadingTimer = setTimeout(() => {
+      slowLoadingTimer = null
+      slowLoading.value = true
+    }, 3000)
+    return
+  }
+  slowLoading.value = false
+})
+
+onUnmounted(() => {
+  if (slowLoadingTimer) clearTimeout(slowLoadingTimer)
 })
 
 const scrubbing = ref(false)
@@ -47,6 +72,14 @@ const displayTime = computed(() => {
 })
 
 const formattedDuration = computed(() => formatTime(knownDuration.value))
+
+const scrubberLabel = computed(() =>
+  props.title ? `Seek preview of “${props.title}”` : 'Seek preview',
+)
+
+const scrubberValueText = computed(() =>
+  `${formatTime(displayTime.value)} of ${formattedDuration.value}`,
+)
 
 function formatTime(totalSeconds: number): string {
   if (!totalSeconds || !Number.isFinite(totalSeconds)) return '0:00'
@@ -116,8 +149,7 @@ function onScrubCommit(event: Event) {
         'yt-audio-play--error': Boolean(previewError),
       }"
       :aria-label="playLabel"
-      :title="previewError ?? undefined"
-      :disabled="playButtonLoading"
+      :title="playButtonLoading ? 'Cancel' : previewError ?? undefined"
       @click="onToggle"
     >
       <span v-if="playButtonLoading" class="yt-audio-icon yt-audio-icon--loading" aria-hidden="true" />
@@ -128,13 +160,21 @@ function onScrubCommit(event: Event) {
     </button>
 
     <div class="yt-audio-scrubber">
+      <span
+        v-if="slowLoading && playButtonLoading"
+        class="yt-audio-slow-note"
+        role="status"
+      >Fetching audio from YouTube — long videos take a while</span>
       <input
+        v-else
         class="yt-audio-range"
         type="range"
         min="0"
         :max="isActive ? (knownDuration || 0) : 0"
         step="0.1"
         :value="displayTime"
+        :aria-label="scrubberLabel"
+        :aria-valuetext="scrubberValueText"
         :disabled="!isActive || !(knownDuration > 0)"
         :style="{ '--yt-progress': `${progressPercent}%` }"
         @pointerdown="onScrubStart"

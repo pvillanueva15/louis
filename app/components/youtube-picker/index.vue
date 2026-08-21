@@ -7,6 +7,7 @@
 -->
 <script setup lang="ts">
 import { useYoutubePicker } from './useYoutubePicker'
+import { useAddToPlaylist } from './useAddToPlaylist'
 import YoutubePickerPreview from './YoutubePickerPreview.vue'
 import YoutubePlaylistImport from './YoutubePlaylistImport.vue'
 import YoutubePickerResultsPane from './YoutubePickerResultsPane.vue'
@@ -43,8 +44,11 @@ const searchPlaceholders = computed(
 )
 
 const containerRef = ref<HTMLElement | null>(null)
+const searchRef = ref<InstanceType<typeof YoutubePickerSearch> | null>(null)
 const audioPlayer = useYoutubeAudioPlayer()
 provide(YOUTUBE_AUDIO_PLAYER_KEY, audioPlayer)
+
+const { available: playlistAvailable, addToPlaylist } = useAddToPlaylist()
 
 const {
   query,
@@ -85,6 +89,14 @@ function onPlaceholderSearch(term: string) {
   search()
 }
 
+function onRetrySearch() {
+  playEvent('buttonPrimary')
+  if (!query.value.trim()) {
+    query.value = submittedQuery.value
+  }
+  search()
+}
+
 async function onSelect(id: string) {
   await selectVideo(id)
 }
@@ -116,9 +128,14 @@ function onKeydown(event: KeyboardEvent) {
       moveFocus(-1)
       break
     case 'Enter':
+      if (event.target instanceof HTMLElement && event.target.closest('button, a')) break
       if (focusedIndex.value >= 0) {
         event.preventDefault()
-        onSelect(results.value[focusedIndex.value]!.id)
+        const video = results.value[focusedIndex.value]!
+        onSelect(video.id)
+        if (playlistAvailable.value) {
+          addToPlaylist(video)
+        }
       }
       break
     case 'Escape':
@@ -130,12 +147,36 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true
+  return target.isContentEditable
+}
+
+function onGlobalKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    if (searchRef.value?.focusInput()) playEvent('select')
+    return
+  }
+  if (
+    event.key === '/'
+    && !event.metaKey && !event.ctrlKey && !event.altKey
+    && !isEditableTarget(event.target)
+  ) {
+    event.preventDefault()
+    if (searchRef.value?.focusInput()) playEvent('select')
+  }
+}
+
 onMounted(() => {
   containerRef.value?.addEventListener('keydown', onKeydown)
+  window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
   containerRef.value?.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('keydown', onGlobalKeydown)
   audioPlayer.destroy()
 })
 </script>
@@ -148,6 +189,7 @@ onUnmounted(() => {
   >
     <div :class="embedded ? 'shrink-0' : ''">
       <YoutubePickerSearch
+        ref="searchRef"
         v-model="query"
         :placeholders="searchPlaceholders"
         :embedded="embedded"
@@ -158,12 +200,35 @@ onUnmounted(() => {
     </div>
 
     <div :class="embedded ? 'flex flex-1 min-h-0 flex-col overflow-hidden' : ''">
-      <p
+      <div
         v-if="status === 'error'"
-        class="font-maru-mono font-maru-regular text-sm text-maru-red py-4 border-maru rounded-maru bg-maru-red-lighter px-4"
+        class="border-maru rounded-maru bg-maru-red-lighter flex flex-col p-2 sm:p-3"
+        :class="embedded ? 'flex-1 min-h-0 overflow-hidden justify-center' : ''"
       >
-        {{ errorMessage }}
-      </p>
+        <div
+          class="empty-state"
+          :class="embedded ? 'flex-1 min-h-0' : 'min-h-32 py-6'"
+          role="alert"
+        >
+          <MaruEmoji
+            name="ElectricPlugRed"
+            size="empty"
+          />
+          <p class="empty-state-title">
+            The search came unplugged
+          </p>
+          <p class="empty-state-meta max-w-lg">
+            {{ errorMessage }}
+          </p>
+          <button
+            type="button"
+            class="maru-button maru-button--sm bg-maru-white text-maru-black mt-3"
+            @click="onRetrySearch"
+          >
+            <span class="maru-button__label">Try again</span>
+          </button>
+        </div>
+      </div>
 
       <YoutubePickerResultsPane
         v-else

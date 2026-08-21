@@ -13,6 +13,7 @@ export type YoutubeAudioPlayerApi = {
   pause: () => void
   toggle: (id: string) => Promise<void>
   seek: (seconds: number) => void
+  cancel: () => void
   destroy: () => void
 }
 
@@ -228,7 +229,29 @@ export function useYoutubeAudioPlayer(): YoutubeAudioPlayerApi {
     sharedAudio?.pause()
   }
 
+  function cancel() {
+    playAbort?.abort()
+    playAbort = null
+    playGeneration += 1
+    if (boundAudio) {
+      boundAudio.pause()
+      boundAudio.removeAttribute('src')
+      boundAudio.load()
+    }
+    ready.value = false
+    activeId.value = null
+    isPlaying.value = false
+    isLoading.value = false
+    error.value = null
+    currentTime.value = 0
+    duration.value = 0
+  }
+
   async function toggle(id: string) {
+    if (activeId.value === id && isLoading.value) {
+      cancel()
+      return
+    }
     if (activeId.value === id && isPlaying.value) {
       pause()
       return
@@ -288,6 +311,7 @@ export function useYoutubeAudioPlayer(): YoutubeAudioPlayerApi {
     pause,
     toggle,
     seek,
+    cancel,
     destroy,
   }
 }

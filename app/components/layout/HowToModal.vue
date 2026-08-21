@@ -32,11 +32,11 @@ const sections = [
   {
     id: 'youtube',
     title: 'YouTube Search',
-    body: 'Type a song, show, or artist to find videos. Preview audio right in the results, then drag a track into your playlist.',
+    body: 'Type a song, show, or artist to find videos. Preview audio right in the results, then drag a track into your playlist or tap its + button.',
     bullets: [
-      'Search and browse YouTube results',
+      'Search and browse YouTube results — press / or Cmd+K to jump to search',
       'Preview tracks before adding them',
-      'Drag results into the playlist panel',
+      'Drag results into the playlist panel, or add them with the + button',
     ],
   },
   {
